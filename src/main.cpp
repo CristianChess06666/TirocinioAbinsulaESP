@@ -92,6 +92,13 @@ char FWVersion[] = "1.0";
 unsigned long previousMillis = 0;
 boolean attributesChanged = false;
 
+//               #----OVERRIDE PRINT----#
+
+void log(const char *text)
+{
+  tb.sendTelemetryData("Log", text);
+}
+
 //               #----FUNZIONI----#
 
 void displayText(const char *testo)
@@ -133,7 +140,7 @@ void InitDisplay()
 void InitWiFi()
 {
   delay(10);
-  Serial.println("[WI-Fi] Tentativo di connessione a ");
+  Serial.println("[]WI-Fi] Tentativo di connessione a ");
   Serial.print(ssid);
   Serial.print("\n");
   // Tenta la connessione a tale ssid e pswd
@@ -144,7 +151,7 @@ void InitWiFi()
   }
   if (WiFi.status() == WL_CONNECTED)
   {
-    Serial.println("[WI-Fi] Wi-Fi connesso a ");
+    Serial.println("[]WI-Fi] Wi-Fi connesso a ");
     Serial.print(ssid);
     Serial.print("\n");
     // Accende il led del wifi
@@ -214,7 +221,7 @@ void sendMPUdata()
 {
   // Tenta di mandare a ThingsBoard i dati del sensore
   sensors_event_t a, g, temp;
-  Serial.println("[TB - sendTelemetryData] Mando dati MPU a TB...");
+  Serial.println("[]TB - sendTelemetryData] Mando dati MPU a TB...");
   mpu.getEvent(&a, &g, &temp);
 
   // Per ogni tentativo..
@@ -244,14 +251,14 @@ void sendMPUdata()
   {
     Serial.println("[*]TB - sendTelemetryData] Fallisco a mandare DataAccelerationZ");
   }
-  Serial.println("[TB - sendTelemetryData] Dati MPU mandati a TB");
+  Serial.println("[]TB - sendTelemetryData] Dati MPU mandati a TB");
 }
 
 void performUpdate()
 {
   // Viene chiamato dopo il riavvio
   // Serve per flasharsi il nuovo firmware
-  Serial.println("[OTA] Preparo il nuovo firmware...");
+  Serial.println("[]OTA] Preparo il nuovo firmware...");
   
   // Apre il nuovo firmware
   File updateFile = SPIFFS.open(FILE_UPDATEBIN, "r");
@@ -261,7 +268,7 @@ void performUpdate()
     return;
   }
 
-  Serial.println("[OTA] Calcolo dimensione firmware... ");
+  Serial.println("[]OTA] Calcolo dimensione firmware... ");
 
   // Serve a Update
   // Utile per capire se il firmware è stato scaricato correttamente
@@ -281,7 +288,7 @@ void performUpdate()
     size_t written = Update.writeStream(updateFile);
     if (written == updateSize)
     {
-      Serial.println("[OTA] Scritti : " + String(written) + " byte correttamente");
+      Serial.println("[]OTA] Scritti : " + String(written) + " byte correttamente");
     }
     else
     {
@@ -294,7 +301,7 @@ void performUpdate()
       if (Update.isFinished())
       {
         // Tutto il nuovo firmware è stato flashato
-        Serial.println("[OTA] Aggiornamento completato, riavvio...");
+        Serial.println("[]OTA] Aggiornamento completato, riavvio...");
         SPIFFS.remove(FILE_UPDATEBIN);
         SPIFFS.remove(FILE_UPDATEURL);
         // updating serve per non mandare dati a ThingsBoard
@@ -340,9 +347,11 @@ boolean checkJson(byte *payload, unsigned int length)
   memcpy(jsonString, payload, length);
   jsonString[length] = '\0';
 
-  // Serial.println("*********************");
-  // Serial.write(payload, length);
-  // Serial.println("*********************");
+   Serial.println("*********************");
+   Serial.write(payload, length);
+   Serial.println("");
+   Serial.println("*********************");
+
   DynamicJsonDocument jsonDocument(2048);
   DeserializationError error = deserializeJson(jsonDocument, jsonString);
 
@@ -350,6 +359,13 @@ boolean checkJson(byte *payload, unsigned int length)
   {
     Serial.print("[*]TB - callback/checkJson] Parsing fallito! Errore: ");
     Serial.println(error.c_str());
+    return true;
+  }
+
+  // Se ThingsBoard ci dice che ci sono delle varibili
+  // vuote, semplicemente ce ne sbattiamo
+  if (jsonDocument.containsKey("deleted"))
+  {
     return true;
   }
 
@@ -370,7 +386,7 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       serializeJsonPretty(completeConfig, configFileOTA);
       configFileOTA.close();
-      Serial.println("[OTA | FW Version] Scrittura completata");
+      Serial.println("[]OTA | FW Version] Scrittura completata");
     }
     else
     {
@@ -392,7 +408,7 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota1.print(urlUpdateBin);
       ota1.close();
-      Serial.println("[OTA | FW URL] Scrittura completata");
+      Serial.println("[]OTA | FW URL] Scrittura completata");
     }
     else
     {
@@ -407,11 +423,46 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota2.print("false");
       ota2.close();
-      Serial.println("[OTA | FW RESULT] Scrittura completata");
+      Serial.println("[]OTA | FW RESULT] Scrittura completata");
     }
     else
     {
       Serial.println("[*]OTA | FW RESULT] Scrittura fallita!");
+    }
+
+    return false;
+  }
+  else
+  {
+    strcpy(urlUpdateBin, "http://147.185.221.18:62532/api/v1/ABOYl08Kk6OcE0gYzzbe/firmware");
+
+    // Salva il link dentro un file
+    // verrà usato solo se fallisce l'Update vero e proprio
+    File ota1 = SPIFFS.open(FILE_UPDATEURL, "w");
+    if (ota1)
+    {
+      ota1.print(urlUpdateBin);
+      ota1.close();
+      Serial.println("[]OTA | DIRECT FW] Scrittura completata");
+    }
+    else
+    {
+      Serial.println("[*]OTA | DIRECT URL] Scrittura fallita!");
+    }
+
+    // Crea (o apre) il file che usiamo per
+    // capire se il chip è stato flashato correttamente
+    // Se l'Update fallisce viene messo a true
+    File ota2 = SPIFFS.open(FILE_UPDATERESULT, "w");
+    if (ota2)
+    {
+      ota2.print("false");
+      ota2.close();
+      Serial.println("[]OTA | DIRECT FW RESULT] Scrittura completata");
+    }
+    else
+    {
+      Serial.println("[*]OTA | DIRECT FW RESULT] Scrittura fallita!");
     }
 
     return false;
@@ -453,7 +504,7 @@ boolean checkJson(byte *payload, unsigned int length)
   {
     serializeJsonPretty(completeConfig, configFile);
     configFile.close();
-    Serial.println("[TB - callback/checkJson] Scrittura completata");
+    Serial.println("[]TB - callback/checkJson] Scrittura completata");
   }
   else
   {
@@ -520,7 +571,7 @@ static void handleDisconnect(void *arg, AsyncClient *client)
   Serial.println("[*]OTA | FW_URL] Disconnesso dal server");
   File *file = (File *)arg;
   file->close();
-  Serial.println("[OTA] Download completato; Riavvio...");
+  Serial.println("[]OTA] Download completato; Riavvio...");
   delay(1000);
   ESP.restart();
 }
@@ -565,7 +616,7 @@ void download(AsyncClient *tcpClient, File *file)
     extension = url.substring(hostEnd);
   }
 
-  // usato per debug
+  // Usato per debug
   Serial.println("#########################################");
   Serial.println(url);
   Serial.println("#########################################");
@@ -648,7 +699,7 @@ void setupMainDirectory()
   }
   else
   {
-    Serial.println("[SPIFFS - setupMainDirectory] SPIFFS inizializzato correttamente");
+    Serial.println("[]SPIFFS - setupMainDirectory] SPIFFS inizializzato correttamente");
   }
 
   // Se c'è un file di risultato flash
@@ -664,7 +715,7 @@ void setupMainDirectory()
       // riscarica il nuovo firmware
       if (content == "true")
       {
-        Serial.println("[OTA] C'è stato un errore nel download, ritento download...");
+        Serial.println("[]OTA] C'è stato un errore nel download, ritento download...");
         download(&tcpClient, &updatebinfile);
       }
     }
@@ -674,7 +725,7 @@ void setupMainDirectory()
   // se c'è un nuovo firmware. Se c'è parte il flash
   if (SPIFFS.exists(FILE_UPDATEBIN))
   {
-    Serial.println("[OTA] Il download è stato completato; Aggiornamento del chip...");
+    Serial.println("[]OTA] Il download è stato completato; Aggiornamento del chip...");
     displayOTA();
     performUpdate();
   }
@@ -747,39 +798,39 @@ void setupMainDirectory()
     Serial.printf("[SPIFFS - setupMainDirectory] Lettura completata: %d chiavi lette\n", conteggioKey);
   }
 
-  Serial.println("[SPIFFS - setupMainDirectory] JSON letto dal file:");
+  Serial.println("[]SPIFFS - setupMainDirectory] JSON letto dal file:");
   serializeJsonPretty(jsonDocument, Serial);
   Serial.println("");
-  Serial.println("[SPIFFS - setupMainDirectory] --------------------");
+  Serial.println("[]SPIFFS - setupMainDirectory] --------------------");
 }
 
 //               #----SETUP | LOOP----#
 void setup()
 {
   Serial.begin(115200);
-  Serial.println("[SETUP] INIZIO SETUP!!");
+  Serial.println("[]SETUP] INIZIO SETUP!!");
   setupLed();
-  Serial.println("[SETUP] setupLed() chiamato");
+  Serial.println("[]SETUP] setupLed() chiamato");
   delay(300);
   InitDisplay();
-  Serial.println("[SETUP] InitDisplay() chiamato");
+  Serial.println("[]SETUP] InitDisplay() chiamato");
   delay(300);
   InitMPU();
-  Serial.println("[SETUP] InitMPU() chiamato");
+  Serial.println("[]SETUP] InitMPU() chiamato");
   delay(300);
   InitWiFi();
-  Serial.println("[SETUP] InitWiFi() chiamato");
+  Serial.println("[]SETUP] InitWiFi() chiamato");
   delay(300);
   setupMainDirectory();
-  Serial.println("[SETUP] setupMainDirectory() chiamato");
+  Serial.println("[]SETUP] setupMainDirectory() chiamato");
   delay(300);
   //
   Serial.print("[ESP32] Firmware Versione ");
   Serial.println(FWVersion);
   //
   mqttClient.set_callback(callback);
-  Serial.println("[SETUP] Callback mqttClient impostato");
-  Serial.println("[SETUP] FINE SETUP!");
+  Serial.println("[]SETUP] Callback mqttClient impostato");
+  Serial.println("[]SETUP] FINE SETUP!");
 }
 
 void loop()
@@ -827,11 +878,13 @@ void loop()
           DisplayMPU();
         }
       }
+
     }
     else
     {
       attributesChanged = false;
     }
+    
     mqttClient.loop();
     tb.loop();
   }
