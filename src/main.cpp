@@ -225,20 +225,6 @@ void DisplayMPU()
   delay(50);
 }
 
-void displayOTA()
-{
-  // Mostra a schermo questo quando c'è un OTA
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.println();
-  display.println();
-  display.println("    OTA  RICEVUTO    ");
-  display.println("");
-  display.println("   Aggiornamento...  ");
-  display.println("NON RESETTARE l'ESP32");
-  display.display();
-}
-
 void sendMPUdata()
 {
   // Tenta di mandare a ThingsBoard i dati del sensore
@@ -415,11 +401,11 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       serializeJsonPretty(completeConfig, configFileOTA);
       configFileOTA.close();
-      logln("[INFO] OTA | FW Version] Scrittura completata");
+      Serial.println("[INFO] OTA | FW Version] Scrittura completata");
     }
     else
     {
-      logln("[CRITICAL] OTA | FW Version] Scrittura fallita!");
+      Serial.println("[CRITICAL] OTA | FW Version] Scrittura fallita!");
     }
   }
 
@@ -437,11 +423,11 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota1.print(urlUpdateBin);
       ota1.close();
-      logln("[INFO] OTA | FW URL] Scrittura completata");
+      Serial.println("[INFO] OTA | FW URL] Scrittura completata");
     }
     else
     {
-      logln("[CRITICAL] OTA | FW URL] Scrittura fallita!");
+      Serial.println("[CRITICAL] OTA | FW URL] Scrittura fallita!");
     }
 
     // Crea (o apre) il file che usiamo per
@@ -452,50 +438,48 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota2.print("false");
       ota2.close();
-      logln("[INFO] OTA | FW RESULT] Scrittura completata");
+      Serial.println("[INFO] OTA | FW RESULT] Scrittura completata");
     }
     else
     {
-      logln("[CRITICAL] OTA | FW RESULT] Scrittura fallita!");
+      Serial.println("[CRITICAL] OTA | FW RESULT] Scrittura fallita!");
     }
 
     return false;
   }
-  else
-  {
-    strcpy(urlUpdateBin, "http://147.185.221.18:62532/api/v1/ABOYl08Kk6OcE0gYzzbe/firmware");
+  // else
+  // {
+  //   // Salva il link dentro un file
+  //   // verrà usato solo se fallisce l'Update vero e proprio
+  //   File ota1 = SPIFFS.open(FILE_UPDATEURL, "w");
+  //   if (ota1)
+  //   {
+  //     ota1.print(urlUpdateBin);
+  //     ota1.close();
+  //     Serial.println("[INFO] OTA | DIRECT FW] Scrittura completata");
+  //   }
+  //   else
+  //   {
+  //     Serial.println("[CRITICAL] OTA | DIRECT URL] Scrittura fallita!");
+  //   }
 
-    // Salva il link dentro un file
-    // verrà usato solo se fallisce l'Update vero e proprio
-    File ota1 = SPIFFS.open(FILE_UPDATEURL, "w");
-    if (ota1)
-    {
-      ota1.print(urlUpdateBin);
-      ota1.close();
-      logln("[INFO] OTA | DIRECT FW] Scrittura completata");
-    }
-    else
-    {
-      logln("[CRITICAL] OTA | DIRECT URL] Scrittura fallita!");
-    }
+  //   // Crea (o apre) il file che usiamo per
+  //   // capire se il chip è stato flashato correttamente
+  //   // Se l'Update fallisce viene messo a true
+  //   File ota2 = SPIFFS.open(FILE_UPDATERESULT, "w");
+  //   if (ota2)
+  //   {
+  //     ota2.print("false");
+  //     ota2.close();
+  //     Serial.println("[INFO] OTA | DIRECT FW RESULT] Scrittura completata");
+  //   }
+  //   else
+  //   {
+  //     Serial.println("[CRITICAL] OTA | DIRECT FW RESULT] Scrittura fallita!");
+  //   }
 
-    // Crea (o apre) il file che usiamo per
-    // capire se il chip è stato flashato correttamente
-    // Se l'Update fallisce viene messo a true
-    File ota2 = SPIFFS.open(FILE_UPDATERESULT, "w");
-    if (ota2)
-    {
-      ota2.print("false");
-      ota2.close();
-      logln("[INFO] OTA | DIRECT FW RESULT] Scrittura completata");
-    }
-    else
-    {
-      logln("[CRITICAL] OTA | DIRECT FW RESULT] Scrittura fallita!");
-    }
-
-    return false;
-  }
+  //   return false;
+  // }
   // Un secondo modo da ThingsBoard per ricevere il link
   // (assegnando all'entità un firmware)
   if (jsonDocument.containsKey("targetFwUrl"))
@@ -610,33 +594,46 @@ static void handleDisconnect(void *arg, AsyncClient *client)
 
 void download(AsyncClient *tcpClient, File *file)
 {
+  Serial.println("ci sono arrivato a download");
   // Crea il file per il nuovo firmware
   updatebinfile = SPIFFS.open(FILE_UPDATEBIN, FILE_WRITE);
+  Serial.println("apro il fejwoie");
   // Se updating è true non manda i dati a ThingsBoard
   // nel mentre che scarica il nuovo firmware
   updating = true;
+  Serial.println("updating ture");
 
   // Apre il file dove c'è l'url e si salva il link
   String url = "";
   if (SPIFFS.exists(FILE_UPDATEURL))
   {
+  Serial.println("il file esiste");
     File updateurl = SPIFFS.open(FILE_UPDATEURL, "r");
+  Serial.println("aperto il file");
     if (updateurl)
     {
+  Serial.println("se aperto corr");
       url = updateurl.readString();
+  Serial.println("leggo url 1");
+  Serial.println("valore url: " + url);
       url.toCharArray(urlUpdateBin, sizeof(urlUpdateBin));
+  Serial.println("leggo url 2");
+  Serial.println("valore url: " + url);
       updateurl.close();
+  Serial.println("chiudo");
+  Serial.println("valore url: " + url);
     }
   }
-  // Visualizza sullo schermo OTA
-  displayOTA();
+  Serial.println("AAAAAAAAAAAAAAAAAAAAAAAAAAA");
 
+  Serial.println("display ota di merda");
   // Formattazione dell'url
-  url = urlUpdateBin;
   String host;
   String extension;
   int hostStart = url.indexOf("://") + 3;
+  Serial.println(hostStart);
   int hostEnd = url.indexOf("/", hostStart);
+  Serial.println(hostEnd);
   if (hostEnd == -1)
   {
     host = url.substring(hostStart);
@@ -648,6 +645,9 @@ void download(AsyncClient *tcpClient, File *file)
     extension = url.substring(hostEnd);
   }
 
+  Serial.println(host);
+  Serial.println(extension);
+  Serial.println("bbbbbbbbbbbbbbbbbbbbbbb");
   // Usato per debug
   Serial.println("#########################################");
   Serial.println(url);
@@ -758,7 +758,6 @@ void setupMainDirectory()
   if (SPIFFS.exists(FILE_UPDATEBIN))
   {
     logln("[INFO] OTA] Il download è stato completato; Aggiornamento del chip...");
-    displayOTA();
     performUpdate();
   }
 
