@@ -363,16 +363,15 @@ void performUpdate()
 boolean checkJson(byte *payload, unsigned int length)
 {
   // Chiamato quando si ricevono nuovi valori degli attributi / OTA da ThingsBoard
-  logln("[INFO] checkJson] Ricevuti dati da ThingsBoard");
   // Spezzetta il json in multiple chiavi
   char jsonString[length + 1];
   memcpy(jsonString, payload, length);
   jsonString[length] = '\0';
 
-   logln("*********************");
+   Serial.println("*********************");
    Serial.write(payload, length);
    Serial.println("");
-   logln("*********************");
+   Serial.println("*********************");
 
   DynamicJsonDocument jsonDocument(2048);
   DeserializationError error = deserializeJson(jsonDocument, jsonString);
