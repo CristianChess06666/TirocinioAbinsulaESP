@@ -25,11 +25,12 @@ const int ledWifi = 0;
 const int ledTB = 1;
 const int ledSubscribe = 2;
 const int resolution = 8;
-const int voltefafafaf = 0;
+
+int sendTBlogSetup = 0;
 
 // DISPLAY
 #define SerialPrintLn(x) \
-  Serial.println(x);     \
+  logln(x);     \
   displayText(x)
 #define SCREEN_WIDTH 128 // larghezza
 #define SCREEN_HEIGHT 64 // altezza
@@ -45,13 +46,13 @@ boolean BOOT = true;
 #define FILE_UPDATEBIN "/update.bin"
 
 // WIFI
-const char ssid[] = "abinsula-28";
-const char password[] = "uff1c10v14l3umb3rt028";
+const char ssid[]  = "abinsula-28";
+const char password[]  = "uff1c10v14l3umb3rt028";
 
 // THINGSBOARD
-constexpr char THINGSBOARD_SERVER[] = "147.185.221.18";
+constexpr char THINGSBOARD_SERVER[]  = "147.185.221.18";
 const uint32_t THINGSBOARD_PORT = 62532U;
-const char TOKEN[] = "ABOYl08Kk6OcE0gYzzbe";
+const char TOKEN[]  = "ABOYl08Kk6OcE0gYzzbe";
 constexpr uint32_t MAX_MESSAGE_SIZE = 1024U;
 
 //               #----DEFINIZIONI----#
@@ -72,21 +73,21 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 Adafruit_MPU6050 mpu;
 
 // ATTRIBUTI SHARED
-char sendDataInterval[] = "sendDataInterval";
+char sendDataInterval[]  = "sendDataInterval";
 long sendDataInterval_int = 1;
 
-char displayIntervalRefresh[] = "displayIntervalRefresh";
+char displayIntervalRefresh[]  = "displayIntervalRefresh";
 long displayIntervalRefresh_int = 1;
 
-char getDataInterval[] = "getDataInterval";
+char getDataInterval[]  = "getDataInterval";
 long getDataInterval_int = 1;
 
 // UPDATE OTA (OVER THE AIR)
-char urlUpdateBin[] = "";
+char urlUpdateBin[]  = "";
 AsyncClient tcpClient;
 File updatebinfile;
 boolean updating = false;
-char FWVersion[] = "1.0";
+char FWVersion[]  = "1.0";
 
 // VAR
 unsigned long previousMillis = 0;
@@ -94,9 +95,25 @@ boolean attributesChanged = false;
 
 //               #----OVERRIDE PRINT----#
 
+void logln(const char *text)
+{
+  tb.sendTelemetryData("LOGS", text);
+    Serial.println(text);
+}
 void log(const char *text)
 {
-  tb.sendTelemetryData("Log", text);
+  tb.sendTelemetryData("LOGS", text);
+  Serial.print(text);
+}
+void logstr(String text)
+{
+  tb.sendTelemetryData("LOGS", text);
+  Serial.println(text);
+}
+void logint(int text)
+{
+  tb.sendTelemetryData("LOGS", text);
+  Serial.println(text);
 }
 
 //               #----FUNZIONI----#
@@ -110,7 +127,7 @@ void displayText(const char *testo)
   display.print(testo);
   display.display();
   //Stampa in seriale per debug
-  Serial.println(testo);
+  logln(testo);
 }
 
 void InitDisplay()
@@ -140,20 +157,25 @@ void InitDisplay()
 void InitWiFi()
 {
   delay(10);
-  Serial.println("[]WI-Fi] Tentativo di connessione a ");
-  Serial.print(ssid);
-  Serial.print("\n");
+  logln("[INFO] WI-Fi] Tentativo di connessione a ");
+  log(ssid);
+  log("\n");
   // Tenta la connessione a tale ssid e pswd
+  int i = 0;
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
+    i++;
+    if (i > 30) {
+      ESP.restart();
+    }
   }
   if (WiFi.status() == WL_CONNECTED)
   {
-    Serial.println("[]WI-Fi] Wi-Fi connesso a ");
-    Serial.print(ssid);
-    Serial.print("\n");
+    logln("[INFO] WI-Fi] Wi-Fi connesso a ");
+    log(ssid);
+    log("\n");
     // Accende il led del wifi
     ledcWrite(ledWifi, 25);
   }
@@ -221,62 +243,62 @@ void sendMPUdata()
 {
   // Tenta di mandare a ThingsBoard i dati del sensore
   sensors_event_t a, g, temp;
-  Serial.println("[]TB - sendTelemetryData] Mando dati MPU a TB...");
+  logln("[INFO] TB - sendTelemetryData] Mando dati MPU a TB...");
   mpu.getEvent(&a, &g, &temp);
 
   // Per ogni tentativo..
   if (!tb.sendTelemetryData("DataGyroscopeX", g.gyro.x))
   {
-    // Serial.println("[*]TB - sendTelemetryData] Fallisco a mandare DataGyroscopeX");
-    Serial.println("[*]TB - sendTelemetryData] Impossibile mandare i dati a TB - Timeout?");
+    // logln("[CRITICAL] TB - sendTelemetryData] Fallisco a mandare DataGyroscopeX");
+    logln("[CRITICAL] TB - sendTelemetryData] Impossibile mandare i dati a TB - Timeout?");
     return;
   }
   if (!tb.sendTelemetryData("DataGyroscopeY", g.gyro.y))
   {
-    Serial.println("[*]TB - sendTelemetryData] Fallisco a mandare DataGyroscopeY");
+    logln("[CRITICAL] TB - sendTelemetryData] Fallisco a mandare DataGyroscopeY");
   }
   if (!tb.sendTelemetryData("DataGyroscopeZ", g.gyro.z))
   {
-    Serial.println("[*]TB - sendTelemetryData] Fallisco a mandare DataGyroscopeZ");
+    logln("[CRITICAL] TB - sendTelemetryData] Fallisco a mandare DataGyroscopeZ");
   }
   if (!tb.sendTelemetryData("DataAccelerationX", a.acceleration.x))
   {
-    Serial.println("[*]TB - sendTelemetryData] Fallisco a mandare DataAccelerationX");
+    logln("[CRITICAL] TB - sendTelemetryData] Fallisco a mandare DataAccelerationX");
   }
   if (!tb.sendTelemetryData("DataAccelerationY", a.acceleration.y))
   {
-    Serial.println("[*]TB - sendTelemetryData] Fallisco a mandare DataAccelerationY");
+    logln("[CRITICAL] TB - sendTelemetryData] Fallisco a mandare DataAccelerationY");
   }
   if (!tb.sendTelemetryData("DataAccelerationZ", a.acceleration.z))
   {
-    Serial.println("[*]TB - sendTelemetryData] Fallisco a mandare DataAccelerationZ");
+    logln("[CRITICAL] TB - sendTelemetryData] Fallisco a mandare DataAccelerationZ");
   }
-  Serial.println("[]TB - sendTelemetryData] Dati MPU mandati a TB");
+  logln("[INFO] TB - sendTelemetryData] Dati MPU mandati a TB");
 }
 
 void performUpdate()
 {
   // Viene chiamato dopo il riavvio
   // Serve per flasharsi il nuovo firmware
-  Serial.println("[]OTA] Preparo il nuovo firmware...");
+  logln("[INFO] OTA] Preparo il nuovo firmware...");
   
   // Apre il nuovo firmware
   File updateFile = SPIFFS.open(FILE_UPDATEBIN, "r");
   if (!updateFile)
   {
-    Serial.println("[*]OTA] Impossibile aprire il file!");
+    logln("[CRITICAL] OTA] Impossibile aprire il file!");
     return;
   }
 
-  Serial.println("[]OTA] Calcolo dimensione firmware... ");
+  logln("[INFO] OTA] Calcolo dimensione firmware... ");
 
   // Serve a Update
   // Utile per capire se il firmware è stato scaricato correttamente
   // (debug: confronto questo valore con la dimensione effettiva)
   size_t updateSize = updateFile.size();
 
-  Serial.print("[OTA] Dimensione firmware calcolato: ");
-  Serial.println(updateSize);
+  log("[OTA] Dimensione firmware calcolato: ");
+  logint(updateSize);
 
   // .begin inizia il flash
   if (Update.begin(updateSize))
@@ -288,11 +310,11 @@ void performUpdate()
     size_t written = Update.writeStream(updateFile);
     if (written == updateSize)
     {
-      Serial.println("[]OTA] Scritti : " + String(written) + " byte correttamente");
+      logstr("[INFO] OTA] Scritti : " + String(written) + " byte correttamente");
     }
     else
     {
-      Serial.println("[*]OTA] Scritti soltato : " + String(written) + " byte /" + String(updateSize) + " byte. Riprova?");
+      logstr("[CRITICAL] OTA] Scritti soltato : " + String(written) + " byte /" + String(updateSize) + " byte. Riprova?");
     }
     // Se è finita la scrittura..
     if (Update.end())
@@ -301,7 +323,7 @@ void performUpdate()
       if (Update.isFinished())
       {
         // Tutto il nuovo firmware è stato flashato
-        Serial.println("[]OTA] Aggiornamento completato, riavvio...");
+        logln("[INFO] OTA] Aggiornamento completato, riavvio...");
         SPIFFS.remove(FILE_UPDATEBIN);
         SPIFFS.remove(FILE_UPDATEURL);
         // updating serve per non mandare dati a ThingsBoard
@@ -312,7 +334,7 @@ void performUpdate()
       else
       {
         // Non ha flashato correttamente
-        Serial.println("[*]OTA] Aggiornamento fallito? Qualcosa è andato storto!");
+        logln("[CRITICAL] OTA] Aggiornamento fallito? Qualcosa è andato storto!");
         if (SPIFFS.exists(FILE_UPDATERESULT))
         {
           // Scrivi il risultato su un file
@@ -329,37 +351,45 @@ void performUpdate()
     }
     else
     {
-      Serial.println("[*]OTA] Errore #: " + String(Update.getError()));
+      logstr("[CRITICAL] OTA] Errore #: " + String(Update.getError()));
     }
   }
   else
   {
-    Serial.println("[*]OTA] Non c'è abbastanza spazio per eseguire l'OTA");
+    logln("[CRITICAL] OTA] Non c'è abbastanza spazio per eseguire l'OTA");
   }
 }
 
 boolean checkJson(byte *payload, unsigned int length)
 {
   // Chiamato quando si ricevono nuovi valori degli attributi / OTA da ThingsBoard
-
+  logln("[INFO] checkJson] Ricevuti dati da ThingsBoard");
   // Spezzetta il json in multiple chiavi
   char jsonString[length + 1];
   memcpy(jsonString, payload, length);
   jsonString[length] = '\0';
 
-   Serial.println("*********************");
+   logln("*********************");
    Serial.write(payload, length);
    Serial.println("");
-   Serial.println("*********************");
+   logln("*********************");
 
   DynamicJsonDocument jsonDocument(2048);
   DeserializationError error = deserializeJson(jsonDocument, jsonString);
 
   if (error)
   {
-    Serial.print("[*]TB - callback/checkJson] Parsing fallito! Errore: ");
-    Serial.println(error.c_str());
+    log("[WARNING] TB - callback/checkJson] Parsing fallito! Errore: ");
+    logln(error.c_str());
     return true;
+  }
+
+  // Se contiene restartesp restarto
+  if (jsonDocument.containsKey("restartesp"))
+  {
+    log("[ESP32] Riavvio richiesto da ThingsBoard...");
+    delay(500);
+    ESP.restart();
   }
 
   // Se ThingsBoard ci dice che ci sono delle varibili
@@ -386,11 +416,11 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       serializeJsonPretty(completeConfig, configFileOTA);
       configFileOTA.close();
-      Serial.println("[]OTA | FW Version] Scrittura completata");
+      logln("[INFO] OTA | FW Version] Scrittura completata");
     }
     else
     {
-      Serial.println("[*]OTA | FW Version] Scrittura fallita!");
+      logln("[CRITICAL] OTA | FW Version] Scrittura fallita!");
     }
   }
 
@@ -408,11 +438,11 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota1.print(urlUpdateBin);
       ota1.close();
-      Serial.println("[]OTA | FW URL] Scrittura completata");
+      logln("[INFO] OTA | FW URL] Scrittura completata");
     }
     else
     {
-      Serial.println("[*]OTA | FW URL] Scrittura fallita!");
+      logln("[CRITICAL] OTA | FW URL] Scrittura fallita!");
     }
 
     // Crea (o apre) il file che usiamo per
@@ -423,11 +453,11 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota2.print("false");
       ota2.close();
-      Serial.println("[]OTA | FW RESULT] Scrittura completata");
+      logln("[INFO] OTA | FW RESULT] Scrittura completata");
     }
     else
     {
-      Serial.println("[*]OTA | FW RESULT] Scrittura fallita!");
+      logln("[CRITICAL] OTA | FW RESULT] Scrittura fallita!");
     }
 
     return false;
@@ -443,11 +473,11 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota1.print(urlUpdateBin);
       ota1.close();
-      Serial.println("[]OTA | DIRECT FW] Scrittura completata");
+      logln("[INFO] OTA | DIRECT FW] Scrittura completata");
     }
     else
     {
-      Serial.println("[*]OTA | DIRECT URL] Scrittura fallita!");
+      logln("[CRITICAL] OTA | DIRECT URL] Scrittura fallita!");
     }
 
     // Crea (o apre) il file che usiamo per
@@ -458,11 +488,11 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota2.print("false");
       ota2.close();
-      Serial.println("[]OTA | DIRECT FW RESULT] Scrittura completata");
+      logln("[INFO] OTA | DIRECT FW RESULT] Scrittura completata");
     }
     else
     {
-      Serial.println("[*]OTA | DIRECT FW RESULT] Scrittura fallita!");
+      logln("[CRITICAL] OTA | DIRECT FW RESULT] Scrittura fallita!");
     }
 
     return false;
@@ -504,16 +534,19 @@ boolean checkJson(byte *payload, unsigned int length)
   {
     serializeJsonPretty(completeConfig, configFile);
     configFile.close();
-    Serial.println("[]TB - callback/checkJson] Scrittura completata");
+    logln("[INFO] TB - callback/checkJson] Scrittura completata");
+    logln("[INFO] checkJson] Configurazione ricostruita");
   }
   else
   {
-    Serial.println("[*]TB - callback/checkJson] Scrittura fallita!");
+    logln("[CRITICAL] TB - callback/checkJson] Scrittura fallita!");
+    logln("[INFO] checkJson] Configurazione NON ricostruita, write failed");
   }
 
   // Se gli attributi sono cambiati
   // skippo un ciclo di invio dati a ThingsBoard nel loop
   attributesChanged = true;
+  logln("[INFO] checkJson] Attributi cambiati");
   return true;
 }
 
@@ -553,14 +586,14 @@ static void handleData(void *arg, AsyncClient *client, void *data, size_t len)
 
 static void handleError(void *arg, AsyncClient *client, int8_t error)
 {
-  Serial.println("[*]OTA | FW_URL] Errore durante la connessione/ricezione dati");
+  logln("[CRITICAL] OTA | FW_URL] Errore durante la connessione/ricezione dati");
   File *file = (File *)arg;
   file->close();
 }
 
 static void handleTimeOut(void *arg, AsyncClient *client, uint32_t time)
 {
-  Serial.println("[*]OTA | FW_URL] ACK non ricevuto - timeout");
+  logln("[WARNING] OTA | FW_URL] ACK non ricevuto - timeout");
   File *file = (File *)arg;
   file->close();
 }
@@ -568,10 +601,10 @@ static void handleTimeOut(void *arg, AsyncClient *client, uint32_t time)
 static void handleDisconnect(void *arg, AsyncClient *client)
 {
   // Quando ci si disconette si chiude il file e si riavvia
-  Serial.println("[*]OTA | FW_URL] Disconnesso dal server");
+  logln("[WARNING] OTA | FW_URL] Disconnesso dal server");
   File *file = (File *)arg;
   file->close();
-  Serial.println("[]OTA] Download completato; Riavvio...");
+  logln("[INFO] OTA] Download completato; Riavvio...");
   delay(1000);
   ESP.restart();
 }
@@ -617,17 +650,17 @@ void download(AsyncClient *tcpClient, File *file)
   }
 
   // Usato per debug
-  Serial.println("#########################################");
-  Serial.println(url);
-  Serial.println("#########################################");
-  Serial.println(host);
-  Serial.println("#########################################");
-  Serial.println(extension);
-  Serial.println("#########################################");
-  Serial.println(urlUpdateBin);
-  Serial.println("#########################################");
-  Serial.print("[OTA | FW_URL] Richiedo il file ");
-  Serial.println(FILE_UPDATEBIN);
+  logln("#########################################");
+  logstr(url);
+  logln("#########################################");
+  logstr(host);
+  logln("#########################################");
+  logstr(extension);
+  logln("#########################################");
+  logln(urlUpdateBin);
+  logln("#########################################");
+  log("[OTA | FW_URL] Richiedo il file ");
+  logln(FILE_UPDATEBIN);
 
   // Dico al client cosa fare se succede questo..
   tcpClient->onData(&handleData, file);
@@ -638,12 +671,12 @@ void download(AsyncClient *tcpClient, File *file)
   tcpClient->connect(host.c_str(), 18800);
   while (!tcpClient->connected())
   {
-    Serial.print(".");
+    log(".");
     delay(100);
   }
 
-  Serial.print("[OTA | FW_URL] Richiedo il file ");
-  Serial.println(FILE_UPDATEBIN);
+  log("[OTA | FW_URL] Richiedo il file ");
+  logln(FILE_UPDATEBIN);
 
   // Prepari il GET da inoltrare al server
   String resp = String("GET ") +
@@ -693,13 +726,13 @@ void setupMainDirectory()
   // Inizializza SPIFFS
   if (!SPIFFS.begin())
   {
-    Serial.println("[*]SPIFFS - setupMainDirectory] SPIFFS non è stato inizializzato correttamente");
-    Serial.println("[*]SPIFFS - setupMainDirectory] Riavvio dell'ESP...");
+    logln("[CRITICAL] SPIFFS - setupMainDirectory] SPIFFS non è stato inizializzato correttamente");
+    logln("[WARNING] SPIFFS - setupMainDirectory] Riavvio dell'ESP...");
     ESP.restart();
   }
   else
   {
-    Serial.println("[]SPIFFS - setupMainDirectory] SPIFFS inizializzato correttamente");
+    logln("[INFO] SPIFFS - setupMainDirectory] SPIFFS inizializzato correttamente");
   }
 
   // Se c'è un file di risultato flash
@@ -715,7 +748,7 @@ void setupMainDirectory()
       // riscarica il nuovo firmware
       if (content == "true")
       {
-        Serial.println("[]OTA] C'è stato un errore nel download, ritento download...");
+        logln("[INFO] OTA] C'è stato un errore nel download, ritento download...");
         download(&tcpClient, &updatebinfile);
       }
     }
@@ -725,7 +758,7 @@ void setupMainDirectory()
   // se c'è un nuovo firmware. Se c'è parte il flash
   if (SPIFFS.exists(FILE_UPDATEBIN))
   {
-    Serial.println("[]OTA] Il download è stato completato; Aggiornamento del chip...");
+    logln("[INFO] OTA] Il download è stato completato; Aggiornamento del chip...");
     displayOTA();
     performUpdate();
   }
@@ -734,18 +767,18 @@ void setupMainDirectory()
   File configFile = SPIFFS.open(FILE_CONFIG, "r");
   if (!configFile)
   {
-    Serial.println("[*]SPIFFS - setupMainDirectory] Impossibile aprire il file di configurazione!");
+    logln("[CRITICAL] SPIFFS - setupMainDirectory] Impossibile aprire il file di configurazione!");
     return;
   }
   size_t size = configFile.size();
   if (size > 1024)
   {
-    Serial.println("[*]SPIFFS - setupMainDirectory] Dimensione del file troppo grande per essere caricato in memoria!");
+    logln("[CRITICAL] SPIFFS - setupMainDirectory] Dimensione del file troppo grande per essere caricato in memoria!");
     return;
   }
 
   // Lettura configurazione e deserializzo il json
-  std::unique_ptr<char[]> buf(new char[size]);
+  std::unique_ptr<char[] > buf(new char[size]);
   configFile.readBytes(buf.get(), size);
   configFile.close();
 
@@ -754,8 +787,8 @@ void setupMainDirectory()
 
   if (error)
   {
-    Serial.print("[*]SPIFFS - setupMainDirectory] Parsing fallito! Errore: ");
-    Serial.println(error.c_str());
+    log("[WARNING] SPIFFS - setupMainDirectory] Parsing fallito! Errore: ");
+    logln(error.c_str());
     return;
   }
 
@@ -787,7 +820,7 @@ void setupMainDirectory()
   // Risultato
   if (conteggioKey == 0)
   {
-    Serial.printf("[*]SPIFFS - setupMainDirectory] Lettura fallita: 0 chiavi lette\n");
+    Serial.printf("[CRITICAL] SPIFFS - setupMainDirectory] Lettura fallita: 0 chiavi lette\n");
   }
   else if (conteggioKey == 1)
   {
@@ -798,39 +831,39 @@ void setupMainDirectory()
     Serial.printf("[SPIFFS - setupMainDirectory] Lettura completata: %d chiavi lette\n", conteggioKey);
   }
 
-  Serial.println("[]SPIFFS - setupMainDirectory] JSON letto dal file:");
+  logln("[INFO] SPIFFS - setupMainDirectory] JSON letto dal file:");
   serializeJsonPretty(jsonDocument, Serial);
-  Serial.println("");
-  Serial.println("[]SPIFFS - setupMainDirectory] --------------------");
+  logln("");
+  logln("[INFO] SPIFFS - setupMainDirectory] --------------------");
 }
 
 //               #----SETUP | LOOP----#
 void setup()
 {
   Serial.begin(115200);
-  Serial.println("[]SETUP] INIZIO SETUP!!");
+  logln("[INFO] SETUP] INIZIO SETUP!!");
   setupLed();
-  Serial.println("[]SETUP] setupLed() chiamato");
+  logln("[INFO] SETUP] setupLed() chiamato");
   delay(300);
   InitDisplay();
-  Serial.println("[]SETUP] InitDisplay() chiamato");
+  logln("[INFO] SETUP] InitDisplay() chiamato");
   delay(300);
   InitMPU();
-  Serial.println("[]SETUP] InitMPU() chiamato");
+  logln("[INFO] SETUP] InitMPU() chiamato");
   delay(300);
   InitWiFi();
-  Serial.println("[]SETUP] InitWiFi() chiamato");
+  logln("[INFO] SETUP] InitWiFi() chiamato");
   delay(300);
   setupMainDirectory();
-  Serial.println("[]SETUP] setupMainDirectory() chiamato");
+  logln("[INFO] SETUP] setupMainDirectory() chiamato");
   delay(300);
   //
-  Serial.print("[ESP32] Firmware Versione ");
-  Serial.println(FWVersion);
+  log("[ESP32] Firmware Versione ");
+  logln(FWVersion);
   //
   mqttClient.set_callback(callback);
-  Serial.println("[]SETUP] Callback mqttClient impostato");
-  Serial.println("[]SETUP] FINE SETUP!");
+  logln("[INFO] SETUP] Callback mqttClient impostato");
+  logln("[INFO] SETUP] FINE SETUP!");
 }
 
 void loop()
@@ -856,6 +889,13 @@ void loop()
       {
         // e appena ti iscrivi al topic accendi anche un'altro led
         ledcWrite(ledSubscribe, 25);
+        if (sendTBlogSetup == 0) {
+          sendTBlogSetup = 1;
+          logln("[ESP32] Setup completato con successo");
+          logln("[ESP32] Procedo al normale funzionamento...");
+        }
+      }else{
+        sendTBlogSetup = 0;
       }
     }
     // ..se gli attributi NON sono cambiati allora mandi i dati del
