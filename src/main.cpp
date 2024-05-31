@@ -649,17 +649,17 @@ void download(AsyncClient *tcpClient, File *file)
   }
 
   // Usato per debug
-  logln("#########################################");
-  logstr(url);
-  logln("#########################################");
-  logstr(host);
-  logln("#########################################");
-  logstr(extension);
-  logln("#########################################");
-  logln(urlUpdateBin);
-  logln("#########################################");
-  log("[OTA | FW_URL] Richiedo il file ");
-  logln(FILE_UPDATEBIN);
+  Serial.println("#########################################");
+  Serial.println(url);
+  Serial.println("#########################################");
+  Serial.println(host);
+  Serial.println("#########################################");
+  Serial.println(extension);
+  Serial.println("#########################################");
+  Serial.println(urlUpdateBin);
+  Serial.println("#########################################");
+  Serial.println("[OTA | FW_URL] Richiedo il file ");
+  Serial.println(FILE_UPDATEBIN);
 
   // Dico al client cosa fare se succede questo..
   tcpClient->onData(&handleData, file);
