@@ -233,16 +233,6 @@
  /Users/cristian/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-spi.h \
  /Users/cristian/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src/Wire.h \
  /Users/cristian/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal.h \
- .pio/libdeps/esp32dev/AsyncTCP/src/AsyncTCP.h \
- /Users/cristian/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/lwip/lwip/src/include/lwip/pbuf.h \
- .pio/libdeps/esp32dev/Adafruit\ GFX\ Library/Adafruit_GFX.h \
- .pio/libdeps/esp32dev/Adafruit\ GFX\ Library/gfxfont.h \
- .pio/libdeps/esp32dev/Adafruit\ BusIO/Adafruit_I2CDevice.h \
- .pio/libdeps/esp32dev/Adafruit\ BusIO/Adafruit_SPIDevice.h \
- .pio/libdeps/esp32dev/Adafruit\ SSD1306/Adafruit_SSD1306.h \
- .pio/libdeps/esp32dev/Adafruit\ MPU6050/Adafruit_MPU6050.h \
- .pio/libdeps/esp32dev/Adafruit\ BusIO/Adafruit_BusIO_Register.h \
- .pio/libdeps/esp32dev/Adafruit\ Unified\ Sensor/Adafruit_Sensor.h \
  /Users/cristian/.platformio/packages/framework-arduinoespressif32/libraries/HTTPClient/src/HTTPClient.h \
  /Users/cristian/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src/WiFiClient.h \
  /Users/cristian/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src/WiFiClientSecure.h \
@@ -277,4 +267,12 @@
  /Users/cristian/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/mbedtls/port/include/aes_alt.h \
  /Users/cristian/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/mbedtls/port/include/aes/esp_aes.h \
  /Users/cristian/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/hal/include/hal/aes_types.h \
- /Users/cristian/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/mbedtls/mbedtls/include/mbedtls/error.h
+ /Users/cristian/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/mbedtls/mbedtls/include/mbedtls/error.h \
+ .pio/libdeps/esp32dev/Adafruit\ GFX\ Library/Adafruit_GFX.h \
+ .pio/libdeps/esp32dev/Adafruit\ GFX\ Library/gfxfont.h \
+ .pio/libdeps/esp32dev/Adafruit\ BusIO/Adafruit_I2CDevice.h \
+ .pio/libdeps/esp32dev/Adafruit\ BusIO/Adafruit_SPIDevice.h \
+ .pio/libdeps/esp32dev/Adafruit\ SSD1306/Adafruit_SSD1306.h \
+ .pio/libdeps/esp32dev/Adafruit\ MPU6050/Adafruit_MPU6050.h \
+ .pio/libdeps/esp32dev/Adafruit\ BusIO/Adafruit_BusIO_Register.h \
+ .pio/libdeps/esp32dev/Adafruit\ Unified\ Sensor/Adafruit_Sensor.h

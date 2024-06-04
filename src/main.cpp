@@ -6,7 +6,7 @@
 #include <Update.h>
 #include <SPI.h>
 #include <Wire.h>
-#include <AsyncTCP.h>
+#include <HTTPClient.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_MPU6050.h>
@@ -30,7 +30,7 @@ int sendTBlogSetup = 0;
 
 // DISPLAY
 #define SerialPrintLn(x) \
-  logln(x);     \
+  logln(x);              \
   displayText(x)
 #define SCREEN_WIDTH 128 // larghezza
 #define SCREEN_HEIGHT 64 // altezza
@@ -44,15 +44,16 @@ boolean BOOT = true;
 #define FILE_UPDATEURL "/ota_url.txt"
 #define FILE_UPDATERESULT "/ota_result.txt"
 #define FILE_UPDATEBIN "/update.bin"
+#define CHUNK_SIZE 2048
 
 // WIFI
-const char ssid[]  = "abinsula-28";
-const char password[]  = "uff1c10v14l3umb3rt028";
+const char ssid[] = "abinsula-28";
+const char password[] = "uff1c10v14l3umb3rt028";
 
 // THINGSBOARD
-constexpr char THINGSBOARD_SERVER[]  = "147.185.221.18";
+constexpr char THINGSBOARD_SERVER[] = "147.185.221.18";
 const uint32_t THINGSBOARD_PORT = 62532U;
-const char TOKEN[]  = "ABOYl08Kk6OcE0gYzzbe";
+const char TOKEN[] = "ABOYl08Kk6OcE0gYzzbe";
 constexpr uint32_t MAX_MESSAGE_SIZE = 1024U;
 
 //               #----DEFINIZIONI----#
@@ -73,21 +74,21 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 Adafruit_MPU6050 mpu;
 
 // ATTRIBUTI SHARED
-char sendDataInterval[]  = "sendDataInterval";
+char sendDataInterval[] = "sendDataInterval";
 long sendDataInterval_int = 1;
 
-char displayIntervalRefresh[]  = "displayIntervalRefresh";
+char displayIntervalRefresh[] = "displayIntervalRefresh";
 long displayIntervalRefresh_int = 1;
 
-char getDataInterval[]  = "getDataInterval";
+char getDataInterval[] = "getDataInterval";
 long getDataInterval_int = 1;
 
 // UPDATE OTA (OVER THE AIR)
-char urlUpdateBin[]  = "";
-AsyncClient tcpClient;
+char urlUpdateBin[] = "";
+HTTPClient http;
 File updatebinfile;
 boolean updating = false;
-char FWVersion[]  = "1.0";
+char FWVersion[] = "1.0";
 
 // VAR
 unsigned long previousMillis = 0;
@@ -97,22 +98,34 @@ boolean attributesChanged = false;
 
 void logln(const char *text)
 {
-  tb.sendTelemetryData("LOGS", text);
-    Serial.println(text);
+  if (!updating)
+  {
+    tb.sendTelemetryData("LOGS", text);
+  }
+  Serial.println(text);
 }
 void log(const char *text)
 {
-  tb.sendTelemetryData("LOGS", text);
+  if (!updating)
+  {
+    tb.sendTelemetryData("LOGS", text);
+  }
   Serial.print(text);
 }
 void logstr(String text)
 {
-  tb.sendTelemetryData("LOGS", text);
+  if (!updating)
+  {
+    tb.sendTelemetryData("LOGS", text);
+  }
   Serial.println(text);
 }
 void logint(int text)
 {
-  tb.sendTelemetryData("LOGS", text);
+  if (!updating)
+  {
+    tb.sendTelemetryData("LOGS", text);
+  }
   Serial.println(text);
 }
 
@@ -120,13 +133,13 @@ void logint(int text)
 
 void displayText(const char *testo)
 {
-  //Usato per visualizzare del testo sullo schermo
-  //Pulisce, stampa e rilascia il buffer
+  // Usato per visualizzare del testo sullo schermo
+  // Pulisce, stampa e rilascia il buffer
   display.clearDisplay();
   display.setCursor(0, 0);
   display.print(testo);
   display.display();
-  //Stampa in seriale per debug
+  // Stampa in seriale per debug
   logln(testo);
 }
 
@@ -167,7 +180,8 @@ void InitWiFi()
   {
     delay(500);
     i++;
-    if (i > 30) {
+    if (i > 30)
+    {
       ESP.restart();
     }
   }
@@ -183,7 +197,7 @@ void InitWiFi()
 
 void InitMPU()
 {
-  //Inizializza il sensore
+  // Inizializza il sensore
   if (!mpu.begin())
   {
     while (1)
@@ -191,7 +205,7 @@ void InitMPU()
       delay(10);
     }
   }
-  //Impostazioni di default (presi da libreria di base)
+  // Impostazioni di default (presi da libreria di base)
   mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
   mpu.setGyroRange(MPU6050_RANGE_500_DEG);
   mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
@@ -267,7 +281,7 @@ void performUpdate()
   // Viene chiamato dopo il riavvio
   // Serve per flasharsi il nuovo firmware
   logln("[INFO] OTA] Preparo il nuovo firmware...");
-  
+
   // Apre il nuovo firmware
   File updateFile = SPIFFS.open(FILE_UPDATEBIN, "r");
   if (!updateFile)
@@ -338,6 +352,7 @@ void performUpdate()
     else
     {
       logstr("[CRITICAL] OTA] Errore #: " + String(Update.getError()));
+      SPIFFS.remove(FILE_UPDATEBIN);
     }
   }
   else
@@ -354,10 +369,10 @@ boolean checkJson(byte *payload, unsigned int length)
   memcpy(jsonString, payload, length);
   jsonString[length] = '\0';
 
-   Serial.println("*********************");
-   Serial.write(payload, length);
-   Serial.println("");
-   Serial.println("*********************");
+  Serial.println("*********************");
+  Serial.write(payload, length);
+  Serial.println("");
+  Serial.println("*********************");
 
   DynamicJsonDocument jsonDocument(2048);
   DeserializationError error = deserializeJson(jsonDocument, jsonString);
@@ -447,44 +462,27 @@ boolean checkJson(byte *payload, unsigned int length)
 
     return false;
   }
-  // else
-  // {
-  //   // Salva il link dentro un file
-  //   // verrà usato solo se fallisce l'Update vero e proprio
-  //   File ota1 = SPIFFS.open(FILE_UPDATEURL, "w");
-  //   if (ota1)
-  //   {
-  //     ota1.print(urlUpdateBin);
-  //     ota1.close();
-  //     Serial.println("[INFO] OTA | DIRECT FW] Scrittura completata");
-  //   }
-  //   else
-  //   {
-  //     Serial.println("[CRITICAL] OTA | DIRECT URL] Scrittura fallita!");
-  //   }
 
-  //   // Crea (o apre) il file che usiamo per
-  //   // capire se il chip è stato flashato correttamente
-  //   // Se l'Update fallisce viene messo a true
-  //   File ota2 = SPIFFS.open(FILE_UPDATERESULT, "w");
-  //   if (ota2)
-  //   {
-  //     ota2.print("false");
-  //     ota2.close();
-  //     Serial.println("[INFO] OTA | DIRECT FW RESULT] Scrittura completata");
-  //   }
-  //   else
-  //   {
-  //     Serial.println("[CRITICAL] OTA | DIRECT FW RESULT] Scrittura fallita!");
-  //   }
-
-  //   return false;
-  // }
   // Un secondo modo da ThingsBoard per ricevere il link
   // (assegnando all'entità un firmware)
   if (jsonDocument.containsKey("targetFwUrl"))
   {
     strcpy(urlUpdateBin, jsonDocument["targetFwUrl"]);
+
+    // Salva il link dentro un file
+    // verrà usato solo se fallisce l'Update vero e proprio
+    File ota1 = SPIFFS.open(FILE_UPDATEURL, "w");
+    if (ota1)
+    {
+      ota1.print(urlUpdateBin);
+      ota1.close();
+      Serial.println("[INFO] OTA | FW URL] Scrittura completata");
+    }
+    else
+    {
+      Serial.println("[CRITICAL] OTA | FW URL] Scrittura fallita!");
+    }
+
     return false;
   }
 
@@ -535,159 +533,119 @@ boolean checkJson(byte *payload, unsigned int length)
 
 //               #----DOWNLOAD NUOVO FIRMWARE OTA----#
 
-void sendStringToServer(String sendMsg, AsyncClient *tcpClient)
+boolean download()
 {
-  //Manda richiesta GET al server http
-  tcpClient->add(sendMsg.c_str(), sendMsg.length());
-  tcpClient->send();
-}
-
-static void handleData(void *arg, AsyncClient *client, void *data, size_t len)
-{
-  //Scarica il file
-  static bool first_response = true;
-  File *file = (File *)arg;
-  if (first_response)
-  {
-    size_t cur_pos = 0;
-    char *temp = (char *)data;
-    for (int i = 0; i < len; ++i)
-    {
-      if (temp[i] == '\n')
-      {
-        cur_pos = i;
-      }
-    }
-    ++cur_pos;
-    file->write((uint8_t *)data + cur_pos, len - cur_pos);
-    first_response = false;
-    return;
-  }
-
-  file->write((uint8_t *)data, len);
-}
-
-static void handleError(void *arg, AsyncClient *client, int8_t error)
-{
-  logln("[CRITICAL] OTA | FW_URL] Errore durante la connessione/ricezione dati");
-  File *file = (File *)arg;
-  file->close();
-}
-
-static void handleTimeOut(void *arg, AsyncClient *client, uint32_t time)
-{
-  logln("[WARNING] OTA | FW_URL] ACK non ricevuto - timeout");
-  File *file = (File *)arg;
-  file->close();
-}
-
-static void handleDisconnect(void *arg, AsyncClient *client)
-{
-  // Quando ci si disconette si chiude il file e si riavvia
-  logln("[WARNING] OTA | FW_URL] Disconnesso dal server");
-  File *file = (File *)arg;
-  file->close();
-  logln("[INFO] OTA] Download completato; Riavvio...");
-  delay(1000);
-  ESP.restart();
-}
-
-void download(AsyncClient *tcpClient, File *file)
-{
-  Serial.println("ci sono arrivato a download");
-  // Crea il file per il nuovo firmware
-  updatebinfile = SPIFFS.open(FILE_UPDATEBIN, FILE_WRITE);
-  Serial.println("apro il fejwoie");
-  // Se updating è true non manda i dati a ThingsBoard
-  // nel mentre che scarica il nuovo firmware
+  String url;
   updating = true;
-  Serial.println("updating ture");
 
-  // Apre il file dove c'è l'url e si salva il link
-  String url = "";
   if (SPIFFS.exists(FILE_UPDATEURL))
   {
-  Serial.println("il file esiste");
     File updateurl = SPIFFS.open(FILE_UPDATEURL, "r");
-  Serial.println("aperto il file");
     if (updateurl)
     {
-  Serial.println("se aperto corr");
+      Serial.println("[INFO] OTA] Aperto file FILE_UPDATEURL");
       url = updateurl.readString();
-  Serial.println("leggo url 1");
-  Serial.println("valore url: " + url);
       url.toCharArray(urlUpdateBin, sizeof(urlUpdateBin));
-  Serial.println("leggo url 2");
-  Serial.println("valore url: " + url);
       updateurl.close();
-  Serial.println("chiudo");
-  Serial.println("valore url: " + url);
     }
   }
-  Serial.println("AAAAAAAAAAAAAAAAAAAAAAAAAAA");
 
-  Serial.println("display ota di merda");
   // Formattazione dell'url
-  String host;
-  String extension;
-  int hostStart = url.indexOf("://") + 3;
-  Serial.println(hostStart);
-  int hostEnd = url.indexOf("/", hostStart);
-  Serial.println(hostEnd);
-  if (hostEnd == -1)
-  {
-    host = url.substring(hostStart);
-    extension = "/";
-  }
-  else
-  {
-    host = url.substring(hostStart, hostEnd);
-    extension = url.substring(hostEnd);
-  }
-
-  Serial.println(host);
-  Serial.println(extension);
-  Serial.println("bbbbbbbbbbbbbbbbbbbbbbb");
-  // Usato per debug
-  Serial.println("#########################################");
-  Serial.println(url);
-  Serial.println("#########################################");
-  Serial.println(host);
-  Serial.println("#########################################");
-  Serial.println(extension);
-  Serial.println("#########################################");
-  Serial.println(urlUpdateBin);
-  Serial.println("#########################################");
-  Serial.println("[OTA | FW_URL] Richiedo il file ");
-  Serial.println(FILE_UPDATEBIN);
-
-  // Dico al client cosa fare se succede questo..
-  tcpClient->onData(&handleData, file);
-  tcpClient->onError(&handleError, file);
-  tcpClient->onTimeout(&handleTimeOut, file);
-  tcpClient->onDisconnect(&handleDisconnect, file);
-  // Tenta la connessione
-  tcpClient->connect(host.c_str(), 18800);
-  while (!tcpClient->connected())
-  {
-    log(".");
-    delay(100);
-  }
-
   log("[OTA | FW_URL] Richiedo il file ");
   logln(FILE_UPDATEBIN);
+  
+  // ********************* INIT HTTP *********************
+  HTTPClient http;
+  if (!http.begin(url)) {
+    Serial.println("[INFO] OTA] http.begin(url) error");
+    return false;
+  }
 
-  // Prepari il GET da inoltrare al server
-  String resp = String("GET ") +
-                extension +
-                String(" HTTP/1.1\r\n") +
-                String("Host: ") +
-                host +
-                String("\r\n") +
-                String("Icy-MetaData:1\r\n") +
-                String("Connection: close\r\n\r\n");
-  // Manda il GET
-  sendStringToServer(resp, tcpClient);
+  // ********************* SEND GET REQUEST *********************
+  size_t try_counter = 0;
+  const size_t TRY_LIMIT = 20;
+  int httpCode = -1;
+  do {
+    httpCode = http.GET();
+    Serial.print(".");
+    vTaskDelay(pdMS_TO_TICKS(250));
+    if (try_counter++ == TRY_LIMIT) {
+      Serial.println("[INFO] OTA] Connection timeout");
+      return false;
+    }
+  } while (httpCode != HTTP_CODE_OK);
+  Serial.println("[INFO] OTA] GET Success");
+
+  // ********************* RECEIVE FILE STREAM *********************
+  WiFiClient* stream = http.getStreamPtr();
+  try_counter = 0;
+  do {
+    stream = http.getStreamPtr();
+    vTaskDelay(pdMS_TO_TICKS(250));
+    Serial.print(".");
+    if (try_counter++ == TRY_LIMIT) {
+      Serial.println("[INFO] OTA] Connection timeout");
+      return false;
+    }
+  } while (!stream->available());
+  Serial.println("[INFO] OTA] File stream received");
+
+  // ********************* CREATE NEW FILE *********************
+  File file = SPIFFS.open(FILE_UPDATEBIN, "w");
+  if (!file) {
+    Serial.println("[INFO] OTA] Error opening file");
+    return false;
+  }
+  Serial.println("[INFO] OTA] Opened FILE_UPDATEBIN file");
+
+  // ********************* DOWNLOAD PROCESS *********************
+  uint8_t* buffer_ = (uint8_t*)malloc(CHUNK_SIZE);
+  uint8_t* cur_buffer = buffer_;
+  const size_t TOTAL_SIZE = http.getSize();
+  Serial.print("[INFO] OTA] TOTAL SIZE : ");
+  Serial.println(TOTAL_SIZE);
+  size_t downloadRemaining = TOTAL_SIZE;
+  Serial.println("[INFO] OTA] Download START");
+
+  auto start_ = millis();
+  if (!http.connected()) {
+    Serial.println("[INFO] OTA] http.connected() false?");
+  }
+  while (downloadRemaining > 0) {
+    Serial.println("[INFO] OTA] http.connected() false?");
+    auto data_size = stream->available();
+    if (data_size > 0) {
+      auto available_buffer_size = CHUNK_SIZE - (cur_buffer - buffer_);
+      auto read_count = stream->read(cur_buffer, ((data_size > available_buffer_size) ? available_buffer_size : data_size));
+      cur_buffer += read_count;
+      downloadRemaining -= read_count;
+      // If one chunk of data has been accumulated, write to SPIFFS
+      if (cur_buffer - buffer_ == CHUNK_SIZE) {
+        file.write(buffer_, CHUNK_SIZE);
+        cur_buffer = buffer_;
+      }
+    }
+    vTaskDelay(1);
+  }
+  auto end_ = millis();
+
+  Serial.println("[INFO] OTA] Download END");
+
+  size_t time_ = (end_ - start_) / 1000;
+  String speed_ = String(TOTAL_SIZE / time_);
+  Serial.println("[INFO] OTA] Velocità: " + speed_ + " bytes/sec");
+
+  file.close();
+  free(buffer_);
+  
+  File bin = SPIFFS.open(FILE_UPDATEBIN, "r");
+  if (!bin) {
+    Serial.println("Non ho scaricato UN CAZZO nel file");
+  }
+  Serial.println("[INFO] OTA] Informazioni FIRMWARE.BIN scaricato:");
+  Serial.println(bin.size());
+  
+  return true;
 }
 
 void callback(char *topic, byte *payload, unsigned int length)
@@ -698,7 +656,14 @@ void callback(char *topic, byte *payload, unsigned int length)
   // Se questo ritorna come false è un OTA
   if (!checkJson(payload, length))
   {
-    download(&tcpClient, &updatebinfile);
+    if (download()){
+      logln("[INFO] OTA] Download completato; Riavvio...");
+      delay(1000);
+      ESP.restart();
+    }else{
+      logln("[CRITICAL] OTA] Download fallito; Procedo al normale funzionamento...");
+      delay(1000);
+    }
   }
 }
 
@@ -748,7 +713,7 @@ void setupMainDirectory()
       if (content == "true")
       {
         logln("[INFO] OTA] C'è stato un errore nel download, ritento download...");
-        download(&tcpClient, &updatebinfile);
+        download();
       }
     }
   }
@@ -776,7 +741,7 @@ void setupMainDirectory()
   }
 
   // Lettura configurazione e deserializzo il json
-  std::unique_ptr<char[] > buf(new char[size]);
+  std::unique_ptr<char[]> buf(new char[size]);
   configFile.readBytes(buf.get(), size);
   configFile.close();
 
@@ -833,6 +798,19 @@ void setupMainDirectory()
   serializeJsonPretty(jsonDocument, Serial);
   logln("");
   logln("[INFO] SPIFFS - setupMainDirectory] --------------------");
+  
+  File root = SPIFFS.open("/", "r");
+
+  File file = root.openNextFile();
+
+  while (file)
+  {
+    Serial.print("FILE: ");
+    Serial.print(file.name());
+    Serial.print(";;; ");
+    Serial.println(file.size());
+    file = root.openNextFile();
+  }
 }
 
 //               #----SETUP | LOOP----#
@@ -862,6 +840,7 @@ void setup()
   mqttClient.set_callback(callback);
   logln("[INFO] SETUP] Callback mqttClient impostato");
   logln("[INFO] SETUP] FINE SETUP!");
+  Serial.println("FINE SETUP DEL C");
 }
 
 void loop()
@@ -887,12 +866,15 @@ void loop()
       {
         // e appena ti iscrivi al topic accendi anche un'altro led
         ledcWrite(ledSubscribe, 25);
-        if (sendTBlogSetup == 0) {
+        if (sendTBlogSetup == 0)
+        {
           sendTBlogSetup = 1;
           logln("[ESP32] Setup completato con successo");
           logln("[ESP32] Procedo al normale funzionamento...");
         }
-      }else{
+      }
+      else
+      {
         sendTBlogSetup = 0;
       }
     }
@@ -916,13 +898,12 @@ void loop()
           DisplayMPU();
         }
       }
-
     }
     else
     {
       attributesChanged = false;
     }
-    
+
     mqttClient.loop();
     tb.loop();
   }
