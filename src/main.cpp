@@ -607,12 +607,18 @@ boolean download()
   size_t downloadRemaining = TOTAL_SIZE;
   Serial.println("[INFO] OTA] Download START");
 
+  int i = 0;
   auto start_ = millis();
   if (!http.connected()) {
     Serial.println("[INFO] OTA] http.connected() false?");
   }
   while (downloadRemaining > 0) {
-    Serial.println("[INFO] OTA] http.connected() false?");
+    i++;
+    Serial.print("[INFO] OTA] Downloading chunk ");
+    Serial.print(i);
+    Serial.print(" - Remaining ");
+    Serial.print(downloadRemaining);
+    Serial.print("\n");
     auto data_size = stream->available();
     if (data_size > 0) {
       auto available_buffer_size = CHUNK_SIZE - (cur_buffer - buffer_);
