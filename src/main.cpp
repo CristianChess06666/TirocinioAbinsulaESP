@@ -4,6 +4,7 @@
 #include <SPIFFS.h>
 #include <ThingsBoard.h>
 #include <Update.h>
+#include <FS.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <HTTPClient.h>
@@ -13,7 +14,6 @@
 #include <Adafruit_Sensor.h>
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
-#include "FS.h"
 
 //               #----COSTANTI----#
 
@@ -560,7 +560,7 @@ boolean download()
   HTTPClient http;
   if (!http.begin(url))
   {
-    Serial.println("[INFO] OTA] http.begin(url) error");
+    Serial.println("[INFO] OTA] http.begin(url) fallito");
     return false;
   }
 
@@ -575,7 +575,7 @@ boolean download()
     vTaskDelay(pdMS_TO_TICKS(250));
     if (try_counter++ == TRY_LIMIT)
     {
-      Serial.println("[INFO] OTA] Connection timeout");
+      Serial.println("[INFO] OTA] Connessione fallita con errore 408: Timeout");
       return false;
     }
   } while (httpCode != HTTP_CODE_OK);
@@ -591,48 +591,50 @@ boolean download()
     Serial.print(".");
     if (try_counter++ == TRY_LIMIT)
     {
-      Serial.println("[INFO] OTA] Connection timeout");
+      Serial.println("[INFO] OTA] Connessione fallita con errore 408: Timeout");
       return false;
     }
   } while (!stream->available());
-  Serial.println("[INFO] OTA] File stream received");
+  Serial.println("[INFO] OTA] Ricevuto stream di dati");
 
   // ********************* CREATE NEW FILE *********************
   File file = SPIFFS.open(FILE_UPDATEBIN, FILE_APPEND);
   if (!file)
   {
-    Serial.println("[INFO] OTA] Error opening file");
+    Serial.println("[INFO] OTA] Errore durante l'apertura del nuovo firmware");
     return false;
   }
-  Serial.println("[INFO] OTA] Opened FILE_UPDATEBIN file");
+  Serial.println("[INFO] OTA] Aperto il file FILE_UPDATEBIN...");
 
   // ********************* DOWNLOAD PROCESS *********************
   uint8_t *buffer_ = (uint8_t *)malloc(CHUNK_SIZE);
   uint8_t *cur_buffer = buffer_;
   const size_t TOTAL_SIZE = http.getSize();
-  Serial.print("[INFO] OTA] TOTAL SIZE : ");
-  Serial.println(TOTAL_SIZE);
+  Serial.print("[INFO] OTA] Buffer totale da scaricare pari a ");
+  Serial.print(TOTAL_SIZE);
+  Serial.println(" bytes");
   size_t downloadRemaining = TOTAL_SIZE;
-  // size_t downloadRemainingBefore = 0;
+  size_t downloadRemainingBefore = downloadRemaining;
   Serial.println("[INFO] OTA] Download START");
 
   int i = 0;
   auto start_ = millis();
   if (!http.connected())
   {
-    Serial.println("[INFO] OTA] http.connected() false?");
+    Serial.println("[INFO] OTA] Condizione \"http.connected()\" risulta false?");
   }
   while (downloadRemaining > 0 && http.connected())
   {
-    // if (downloadRemaining != downloadRemainingBefore)
-    // {
+    if (downloadRemaining != downloadRemainingBefore)
+    {
       i++;
-      Serial.print("[INFO] OTA] Downloading chunk ");
+      Serial.print("[INFO] OTA] In download Chunk ");
       Serial.print(i);
-      Serial.print(" - Remaining ");
+      Serial.print(" - ");
       Serial.print(downloadRemaining);
-      Serial.print("\n");
-    // }
+      Serial.print(" bytes rimanenti\n");
+      downloadRemainingBefore = downloadRemaining;
+    }
     auto data_size = stream->available();
     if (data_size > 0)
     {
@@ -640,7 +642,6 @@ boolean download()
       auto read_count = stream->read(cur_buffer, ((data_size > available_buffer_size) ? available_buffer_size : data_size));
       cur_buffer += read_count;
       downloadRemaining -= read_count;
-      // If one chunk of data has been accumulated, write to SPIFFS
       if (cur_buffer - buffer_ == CHUNK_SIZE)
       {
         file.write(buffer_, CHUNK_SIZE);
@@ -650,6 +651,12 @@ boolean download()
     vTaskDelay(1);
   }
   auto end_ = millis();
+
+  // Scrivi eventuali dati rimanenti nel buffer
+  // if (cur_buffer > buffer_)
+  // {
+  //   file.write(buffer_, cur_buffer - buffer_);
+  // }
 
   Serial.println("[INFO] OTA] Download END");
 
