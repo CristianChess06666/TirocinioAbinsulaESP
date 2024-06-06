@@ -611,15 +611,6 @@ boolean download()
   } while (!stream->available());
   Serial.println("[INFO] OTA] Ricevuto stream di dati");
 
-  // ********************* CREATE NEW FILE *********************
-  File file = SPIFFS.open(FILE_UPDATEBIN, "ab");
-  if (!file)
-  {
-    Serial.println("[INFO] OTA] Errore durante l'apertura del nuovo firmware");
-    return false;
-  }
-  Serial.println("[INFO] OTA] Aperto il file FILE_UPDATEBIN...");
-
   // ********************* DOWNLOAD PROCESS *********************
   uint8_t *buffer_ = (uint8_t *)malloc(CHUNK_SIZE);
   uint8_t *cur_buffer = buffer_;
@@ -627,8 +618,17 @@ boolean download()
   Serial.print("[INFO] OTA] Buffer totale da scaricare pari a ");
   Serial.print(TOTAL_SIZE);
   Serial.println(" bytes");
+  
+  uint8_t *buffer = (uint8_t *)malloc(TOTAL_SIZE);
+  if (!buffer)
+  {
+    Serial.println("[INFO] OTA] Errore durante l'allocazione della memoria");
+    return false;
+  }
+
   size_t downloadRemaining = TOTAL_SIZE;
   size_t downloadRemainingBefore = downloadRemaining;
+  size_t offset = 0;
   Serial.println("[DOWNLOAD START] OTA] OK");
 
   int i = 0;
@@ -643,7 +643,7 @@ boolean download()
     if (downloadRemaining != downloadRemainingBefore)
     {
       i++;
-      Serial.print("[INFO] OTA] In download Chunk ");
+      Serial.print("[DOWNLOAD] OTA] In download Chunk ");
       Serial.print(i);
       Serial.print(" - ");
       Serial.print(downloadRemaining);
@@ -653,19 +653,27 @@ boolean download()
     auto data_size = stream->available();
     if (data_size > 0)
     {
-      auto available_buffer_size = CHUNK_SIZE - (cur_buffer - buffer_);
-      auto read_count = stream->read(cur_buffer, ((data_size > available_buffer_size) ? available_buffer_size : data_size));
-      cur_buffer += read_count;
+      auto read_count = stream->readBytes(buffer + offset, (data_size > downloadRemaining) ? downloadRemaining : data_size);
       downloadRemaining -= read_count;
-      if (cur_buffer - buffer_ == CHUNK_SIZE)
-      {
-        file.write(buffer_, CHUNK_SIZE);
-        cur_buffer = buffer_;
-      }
+      offset += read_count;
     }
     vTaskDelay(1);
   }
   auto end_ = millis();
+
+  
+  // ********************* CREATE NEW FILE *********************
+  File file = SPIFFS.open(FILE_UPDATEBIN, FILE_WRITE);
+  if (!file)
+  {
+    Serial.println("[INFO] OTA] Errore durante l'apertura del file per la scrittura");
+    free(buffer);
+    return false;
+  }
+
+  file.write(buffer, TOTAL_SIZE);
+  file.close();
+  free(buffer);
 
   // Scrivi eventuali dati rimanenti nel buffer
   // if (cur_buffer > buffer_)
@@ -679,7 +687,6 @@ boolean download()
   String speed_ = String(TOTAL_SIZE / time_);
   Serial.println("[INFO] OTA] Velocità: " + speed_ + " bytes/sec");
 
-  file.close();
   free(buffer_);
 
   File bin = SPIFFS.open(FILE_UPDATEBIN, "r");
