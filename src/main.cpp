@@ -659,7 +659,7 @@ boolean download()
       downloadRemaining -= read_count;
       if (cur_buffer - buffer_ == CHUNK_SIZE)
       {
-        file.write(buffer_, CHUNK_SIZE);
+        file.print(buffer_, CHUNK_SIZE);
         cur_buffer = buffer_;
       }
     }
