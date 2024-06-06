@@ -13,6 +13,7 @@
 #include <Adafruit_Sensor.h>
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <AsyncTCP.h>
 #include "FS.h"
 
 //               #----COSTANTI----#
@@ -85,9 +86,8 @@ char getDataInterval[] = "getDataInterval";
 long getDataInterval_int = 1;
 
 // UPDATE OTA (OVER THE AIR)
-char urlUpdateBin[] = "";
-HTTPClient http;
-File updatebinfile;
+char urlUpdateBin[]="";
+AsyncClient *tcpClient;
 boolean updating = false;
 char FWVersion[] = "1.0";
 
@@ -371,10 +371,10 @@ boolean checkJson(byte *payload, unsigned int length)
   memcpy(jsonString, payload, length);
   jsonString[length] = '\0';
 
-  Serial.println("*********************");
-  Serial.write(payload, length);
-  Serial.println("");
-  Serial.println("*********************");
+   Serial.println("*********************");
+   Serial.write(payload, length);
+   Serial.println("");
+   Serial.println("*********************");
 
   DynamicJsonDocument jsonDocument(2048);
   DeserializationError error = deserializeJson(jsonDocument, jsonString);
@@ -418,11 +418,11 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       serializeJsonPretty(completeConfig, configFileOTA);
       configFileOTA.close();
-      Serial.println("[INFO] OTA | FW Version] Scrittura completata");
+      logln("[INFO] OTA | FW Version] Scrittura completata");
     }
     else
     {
-      Serial.println("[CRITICAL] OTA | FW Version] Scrittura fallita!");
+      logln("[CRITICAL] OTA | FW Version] Scrittura fallita!");
     }
   }
 
@@ -440,11 +440,11 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota1.print(urlUpdateBin);
       ota1.close();
-      Serial.println("[INFO] OTA | FW URL] Scrittura completata");
+      logln("[INFO] OTA | FW URL] Scrittura completata");
     }
     else
     {
-      Serial.println("[CRITICAL] OTA | FW URL] Scrittura fallita!");
+      logln("[CRITICAL] OTA | FW URL] Scrittura fallita!");
     }
 
     // Crea (o apre) il file che usiamo per
@@ -455,19 +455,16 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota2.print("false");
       ota2.close();
-      Serial.println("[INFO] OTA | FW RESULT] Scrittura completata");
+      logln("[INFO] OTA | FW RESULT] Scrittura completata");
     }
     else
     {
-      Serial.println("[CRITICAL] OTA | FW RESULT] Scrittura fallita!");
+      logln("[CRITICAL] OTA | FW RESULT] Scrittura fallita!");
     }
 
     return false;
   }
-
-  // Un secondo modo da ThingsBoard per ricevere il link
-  // (assegnando all'entità un firmware)
-  if (jsonDocument.containsKey("targetFwUrl"))
+  else
   {
     strcpy(urlUpdateBin, jsonDocument["targetFwUrl"]);
 
@@ -478,13 +475,35 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota1.print(urlUpdateBin);
       ota1.close();
-      Serial.println("[INFO] OTA | FW URL] Scrittura completata");
+      logln("[INFO] OTA | DIRECT FW] Scrittura completata");
     }
     else
     {
-      Serial.println("[CRITICAL] OTA | FW URL] Scrittura fallita!");
+      logln("[CRITICAL] OTA | DIRECT URL] Scrittura fallita!");
     }
 
+    // Crea (o apre) il file che usiamo per
+    // capire se il chip è stato flashato correttamente
+    // Se l'Update fallisce viene messo a true
+    File ota2 = SPIFFS.open(FILE_UPDATERESULT, "w");
+    if (ota2)
+    {
+      ota2.print("false");
+      ota2.close();
+      logln("[INFO] OTA | DIRECT FW RESULT] Scrittura completata");
+    }
+    else
+    {
+      logln("[CRITICAL] OTA | DIRECT FW RESULT] Scrittura fallita!");
+    }
+
+    return false;
+  }
+  // Un secondo modo da ThingsBoard per ricevere il link
+  // (assegnando all'entità un firmware)
+  if (jsonDocument.containsKey("targetFwUrl"))
+  {
+    strcpy(urlUpdateBin, jsonDocument["targetFwUrl"]);
     return false;
   }
 
@@ -532,20 +551,78 @@ boolean checkJson(byte *payload, unsigned int length)
   logln("[INFO] checkJson] Attributi cambiati");
   return true;
 }
-
 //               #----DOWNLOAD NUOVO FIRMWARE OTA----#
-
-boolean download()
+void sendStringToServer(String sendMsg, AsyncClient *tcpClient)
 {
-  String url;
+  //Manda richiesta GET al server http
+  tcpClient->add(sendMsg.c_str(), sendMsg.length());
+  tcpClient->send();
+}
+
+static void handleData(void *arg, AsyncClient *client, void *data, size_t len)
+{
+  //Scarica il file
+  static bool first_response = true;
+  File *file = (File *)arg;
+  if (first_response)
+  {
+    size_t cur_pos = 0;
+    char *temp = (char *)data;
+    for (int i = 0; i < len; ++i)
+    {
+      if (temp[i] == '\n')
+      {
+        cur_pos = i;
+      }
+    }
+    ++cur_pos;
+    file->write((uint8_t *)data + cur_pos, len - cur_pos);
+    first_response = false;
+    return;
+  }
+
+  file->write((uint8_t *)data, len);
+}
+
+static void handleError(void *arg, AsyncClient *client, int8_t error)
+{
+  logln("[CRITICAL] OTA | FW_URL] Errore durante la connessione/ricezione dati");
+  File *file = (File *)arg;
+  file->close();
+}
+
+static void handleTimeOut(void *arg, AsyncClient *client, uint32_t time)
+{
+  logln("[WARNING] OTA | FW_URL] ACK non ricevuto - timeout");
+  File *file = (File *)arg;
+  file->close();
+}
+
+static void handleDisconnect(void *arg, AsyncClient *client)
+{
+  // Quando ci si disconette si chiude il file e si riavvia
+  logln("[WARNING] OTA | FW_URL] Disconnesso dal server");
+  File *file = (File *)arg;
+  file->close();
+  logln("[INFO] OTA] Download completato; Riavvio...");
+  delay(1000);
+  ESP.restart();
+}
+
+void download()
+{// Crea il file per il nuovo firmware
+  File updatebinfile = SPIFFS.open(FILE_UPDATEBIN, FILE_WRITE);
+  // Se updating è true non manda i dati a ThingsBoard
+  // nel mentre che scarica il nuovo firmware
   updating = true;
 
+  // Apre il file dove c'è l'url e si salva il link
+  String url = "";
   if (SPIFFS.exists(FILE_UPDATEURL))
   {
     File updateurl = SPIFFS.open(FILE_UPDATEURL, "r");
     if (updateurl)
     {
-      Serial.println("[INFO] OTA] Aperto file FILE_UPDATEURL");
       url = updateurl.readString();
       url.toCharArray(urlUpdateBin, sizeof(urlUpdateBin));
       updateurl.close();
@@ -553,132 +630,62 @@ boolean download()
   }
 
   // Formattazione dell'url
-  log("[OTA | FW_URL] Richiedo il file ");
-  logln(FILE_UPDATEBIN);
-
-  // ********************* INIT HTTP *********************
-  HTTPClient http;
-  if (!http.begin(url))
+  url = urlUpdateBin;
+  String host;
+  String extension;
+  int hostStart = url.indexOf("://") + 3;
+  int hostEnd = url.indexOf("/", hostStart);
+  if (hostEnd == -1)
   {
-    Serial.println("[INFO] OTA] http.begin(url) error");
-    return false;
-  }
-
-  // ********************* SEND GET REQUEST *********************
-  size_t try_counter = 0;
-  const size_t TRY_LIMIT = 20;
-  int httpCode = -1;
-  do
-  {
-    httpCode = http.GET();
-    Serial.print(".");
-    vTaskDelay(pdMS_TO_TICKS(250));
-    if (try_counter++ == TRY_LIMIT)
-    {
-      Serial.println("[INFO] OTA] Connection timeout");
-      return false;
-    }
-  } while (httpCode != HTTP_CODE_OK);
-  Serial.println("[INFO] OTA] GET Success");
-
-  // ********************* RECEIVE FILE STREAM *********************
-  WiFiClient *stream = http.getStreamPtr();
-  try_counter = 0;
-  do
-  {
-    stream = http.getStreamPtr();
-    vTaskDelay(pdMS_TO_TICKS(250));
-    Serial.print(".");
-    if (try_counter++ == TRY_LIMIT)
-    {
-      Serial.println("[INFO] OTA] Connection timeout");
-      return false;
-    }
-  } while (!stream->available());
-  Serial.println("[INFO] OTA] File stream received");
-
-  // ********************* CREATE NEW FILE *********************
-  File file = SPIFFS.open(FILE_UPDATEBIN, FILE_APPEND);
-  if (!file)
-  {
-    Serial.println("[INFO] OTA] Error opening file");
-    return false;
-  }
-  Serial.println("[INFO] OTA] Opened FILE_UPDATEBIN file");
-
-  // ********************* DOWNLOAD PROCESS *********************
-  uint8_t *buffer_ = (uint8_t *)malloc(CHUNK_SIZE);
-  uint8_t *cur_buffer = buffer_;
-  const size_t TOTAL_SIZE = http.getSize();
-  Serial.print("[INFO] OTA] TOTAL SIZE : ");
-  Serial.println(TOTAL_SIZE);
-  size_t downloadRemaining = TOTAL_SIZE;
-  // size_t downloadRemainingBefore = 0;
-  Serial.println("[INFO] OTA] Download START");
-
-  int i = 0;
-  auto start_ = millis();
-  if (!http.connected())
-  {
-    Serial.println("[INFO] OTA] http.connected() false?");
-  }
-  while (downloadRemaining > 0 && http.connected())
-  {
-    // if (downloadRemaining != downloadRemainingBefore)
-    // {
-      i++;
-      Serial.print("[INFO] OTA] Downloading chunk ");
-      Serial.print(i);
-      Serial.print(" - Remaining ");
-      Serial.print(downloadRemaining);
-      Serial.print("\n");
-    // }
-    auto data_size = stream->available();
-    if (data_size > 0)
-    {
-      auto available_buffer_size = CHUNK_SIZE - (cur_buffer - buffer_);
-      auto read_count = stream->read(cur_buffer, ((data_size > available_buffer_size) ? available_buffer_size : data_size));
-      cur_buffer += read_count;
-      downloadRemaining -= read_count;
-      // If one chunk of data has been accumulated, write to SPIFFS
-      if (cur_buffer - buffer_ == CHUNK_SIZE)
-      {
-        file.write(buffer_, CHUNK_SIZE);
-        cur_buffer = buffer_;
-      }
-    }
-    vTaskDelay(1);
-  }
-  auto end_ = millis();
-
-  Serial.println("[INFO] OTA] Download END");
-
-  size_t time_ = (end_ - start_) / 1000;
-  String speed_ = String(TOTAL_SIZE / time_);
-  Serial.println("[INFO] OTA] Velocità: " + speed_ + " bytes/sec");
-
-  file.close();
-  free(buffer_);
-
-  File bin = SPIFFS.open(FILE_UPDATEBIN, "r");
-  if (!bin)
-  {
-    Serial.println("[INFO] OTA] File non esistente?");
+    host = url.substring(hostStart);
+    extension = "/";
   }
   else
   {
-    Serial.print("[INFO] OTA] Informazioni FIRMWARE.BIN scaricato: ");
-    Serial.print(bin.size());
-    Serial.print(" bytes\n");
-    if (bin.size() == 0)
-    {
-      log("[CRITICAL] OTA] FIRMWARE.BIN non è stato scaricato correttamente. Riavvio ESP...");
-      ESP.restart();
-    }
-    bin.close();
+    host = url.substring(hostStart, hostEnd);
+    extension = url.substring(hostEnd);
   }
 
-  return true;
+  // Usato per debug
+  logln("#########################################");
+  logstr(url);
+  logln("#########################################");
+  logstr(host);
+  logln("#########################################");
+  logstr(extension);
+  logln("#########################################");
+  logln(urlUpdateBin);
+  logln("#########################################");
+  log("[OTA | FW_URL] Richiedo il file ");
+  logln(FILE_UPDATEBIN);
+
+  // Dico al client cosa fare se succede questo..
+  tcpClient->onData(&handleData);
+  tcpClient->onError(&handleError);
+  tcpClient->onTimeout(&handleTimeOut);
+  tcpClient->onDisconnect(&handleDisconnect);
+  // Tenta la connessione
+  tcpClient->connect(host.c_str(), 18800);
+  while (!tcpClient->connected())
+  {
+    log(".");
+    delay(100);
+  }
+
+  log("[OTA | FW_URL] Richiedo il file ");
+  logln(FILE_UPDATEBIN);
+
+  // Prepari il GET da inoltrare al server
+  String resp = String("GET ") +
+                extension +
+                String(" HTTP/1.1\r\n") +
+                String("Host: ") +
+                host +
+                String("\r\n") +
+                String("Icy-MetaData:1\r\n") +
+                String("Connection: close\r\n\r\n");
+  // Manda il GET
+  sendStringToServer(resp, tcpClient);
 }
 
 void callback(char *topic, byte *payload, unsigned int length)
@@ -689,18 +696,8 @@ void callback(char *topic, byte *payload, unsigned int length)
   // Se questo ritorna come false è un OTA
   if (!checkJson(payload, length))
   {
-    if (download())
-    {
-      logln("[INFO] OTA] Download completato; Riavvio...");
-      delay(1000);
-      ESP.restart();
-    }
-    else
-    {
-      logln("[CRITICAL] OTA] Download fallito; Riavvio...");
-      delay(1000);
-      ESP.restart();
-    }
+    download();
+    
   }
 }
 

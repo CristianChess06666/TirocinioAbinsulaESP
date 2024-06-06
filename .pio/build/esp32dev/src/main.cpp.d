@@ -275,4 +275,6 @@
  .pio/libdeps/esp32dev/Adafruit\ SSD1306/Adafruit_SSD1306.h \
  .pio/libdeps/esp32dev/Adafruit\ MPU6050/Adafruit_MPU6050.h \
  .pio/libdeps/esp32dev/Adafruit\ BusIO/Adafruit_BusIO_Register.h \
- .pio/libdeps/esp32dev/Adafruit\ Unified\ Sensor/Adafruit_Sensor.h
+ .pio/libdeps/esp32dev/Adafruit\ Unified\ Sensor/Adafruit_Sensor.h \
+ .pio/libdeps/esp32dev/AsyncTCP/src/AsyncTCP.h \
+ /Users/cristian/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32/include/lwip/lwip/src/include/lwip/pbuf.h
