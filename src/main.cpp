@@ -451,17 +451,17 @@ boolean checkJson(byte *payload, unsigned int length)
     // Crea (o apre) il file che usiamo per
     // capire se il chip è stato flashato correttamente
     // Se l'Update fallisce viene messo a true
-    // File ota2 = SPIFFS.open(FILE_UPDATERESULT, "w");
-    // if (ota2)
-    // {
-    //   ota2.print("false");
-    //   ota2.close();
-    //   Serial.println("[INFO] OTA | FW RESULT] Scrittura completata");
-    // }
-    // else
-    // {
-    //   Serial.println("[CRITICAL] OTA | FW RESULT] Scrittura fallita!");
-    // }
+    File ota2 = SPIFFS.open(FILE_UPDATERESULT, "w");
+    if (ota2)
+    {
+      ota2.print("false");
+      ota2.close();
+      Serial.println("[INFO] OTA | FW RESULT] Scrittura completata");
+    }
+    else
+    {
+      Serial.println("[CRITICAL] OTA | FW RESULT] Scrittura fallita!");
+    }
 
     return false;
   }
@@ -595,12 +595,6 @@ boolean download()
   } while (httpCode != HTTP_CODE_OK);
   Serial.println("[INFO] OTA] GET Success");
 
-  // ********************* DETERMINE FILE SIZE *********************
-  const size_t TOTAL_SIZE = http.getSize();
-  Serial.print("[INFO] OTA] Dimensione totale del file da scaricare: ");
-  Serial.print(TOTAL_SIZE);
-  Serial.println(" bytes");
-
   // ********************* RECEIVE FILE STREAM *********************
   WiFiClient *stream = http.getStreamPtr();
   try_counter = 0;
@@ -617,56 +611,79 @@ boolean download()
   } while (!stream->available());
   Serial.println("[INFO] OTA] Ricevuto stream di dati");
 
-  // ********************* DOWNLOAD PROCESS *********************
-  size_t remainingBytes = TOTAL_SIZE;
-  size_t chunkIndex = 0;
-
-  while (remainingBytes > 0)
+  // ********************* CREATE NEW FILE *********************
+  File file = SPIFFS.open(FILE_UPDATEBIN, "ab");
+  if (!file)
   {
-    // Calcolo della dimensione del chunk attuale
-    size_t currentChunkSize = remainingBytes - CHUNK_SIZE;
-
-    // Creazione del nome del file per il chunk attuale
-    String filename = "/part" + String(chunkIndex) + ".bin";
-
-    // Apertura del file per il chunk attuale
-    File file = SPIFFS.open(filename, FILE_WRITE);
-    if (!file)
-    {
-      Serial.println("[INFO] OTA] Errore durante l'apertura del file per la scrittura");
-      return false;
-    }
-
-    // Lettura e scrittura del chunk attuale
-    uint8_t buffer[CHUNK_SIZE];
-    size_t bytesRead = 0;
-    while (bytesRead < currentChunkSize)
-    {
-      size_t bytesToRead = min(currentChunkSize - bytesRead, sizeof(buffer));
-      size_t bytesReadThisTime = stream->readBytes(buffer, bytesToRead);
-      if (bytesReadThisTime == 0)
-      {
-        Serial.println("[INFO] OTA] Connessione chiusa prima che tutti i dati fossero letti");
-        file.close();
-        return false;
-      }
-      file.write(buffer, bytesReadThisTime);
-      bytesRead += bytesReadThisTime;
-    }
-
-    // Chiusura del file per il chunk attuale
-    file.close();
-
-    // Aggiornamento dei dati rimanenti e dell'indice del chunk
-    remainingBytes -= currentChunkSize;
-    chunkIndex++;
-
-    Serial.print("[INFO] OTA] Scaricato e salvato il chunk ");
-    Serial.print(chunkIndex);
-    Serial.print(" - ");
-    Serial.print(remainingBytes);
-    Serial.println(" bytes rimanenti");
+    Serial.println("[INFO] OTA] Errore durante l'apertura del nuovo firmware");
+    return false;
   }
+  Serial.println("[INFO] OTA] Aperto il file FILE_UPDATEBIN...");
+
+  // ********************* DOWNLOAD PROCESS *********************
+  uint8_t *buffer_ = (uint8_t *)malloc(CHUNK_SIZE);
+  uint8_t *cur_buffer = buffer_;
+  const size_t TOTAL_SIZE = http.getSize();
+  Serial.print("[INFO] OTA] Buffer totale da scaricare pari a ");
+  Serial.print(TOTAL_SIZE);
+  Serial.println(" bytes");
+  size_t downloadRemaining = TOTAL_SIZE;
+  size_t downloadRemainingBefore = downloadRemaining;
+  Serial.println("[DOWNLOAD START] OTA] OK");
+
+  int i = 0;
+  auto start_ = millis();
+  if (!http.connected())
+  {
+    Serial.println("[INFO] OTA] Condizione \"http.connected()\" risulta false?");
+    return false;
+  }
+  while (downloadRemaining > 0 && http.connected())
+  {
+    if (downloadRemaining != downloadRemainingBefore)
+    {
+      i++;
+      Serial.print("[INFO] OTA] In download Chunk ");
+      Serial.print(i);
+      Serial.print(" - ");
+      Serial.print(downloadRemaining);
+      Serial.print(" bytes rimanenti\n");
+      downloadRemainingBefore = downloadRemaining;
+    }
+    auto data_size = stream->available();
+    if (data_size > 0)
+    {
+      auto available_buffer_size = CHUNK_SIZE - (cur_buffer - buffer_);
+      auto read_count = stream->read(cur_buffer, ((data_size > available_buffer_size) ? available_buffer_size : data_size));
+      cur_buffer += read_count;
+      downloadRemaining -= read_count;
+      if (cur_buffer - buffer_ == CHUNK_SIZE)
+      {
+        int bytes = file.write(buffer_, CHUNK_SIZE);
+        Serial.print("** Scritti ");
+        Serial.print(bytes);
+        Serial.print(" bytes nel file.\n")
+        cur_buffer = buffer_;
+      }
+    }
+    vTaskDelay(1);
+  }
+  auto end_ = millis();
+
+  // Scrivi eventuali dati rimanenti nel buffer
+  // if (cur_buffer > buffer_)
+  // {
+  //   file.write(buffer_, cur_buffer - buffer_);
+  // }
+
+  Serial.println("[DOWNLOAD END] OTA] OK");
+
+  size_t time_ = (end_ - start_) / 1000;
+  String speed_ = String(TOTAL_SIZE / time_);
+  Serial.println("[INFO] OTA] Velocità: " + speed_ + " bytes/sec");
+
+  file.close();
+  free(buffer_);
 
   File bin = SPIFFS.open(FILE_UPDATEBIN, "r");
   if (!bin)
@@ -675,7 +692,7 @@ boolean download()
   }
   else
   {
-    Serial.print("[INFO] OTA] Informazioni FIRMWARE.BIN compilato: ");
+    Serial.print("[INFO] OTA] Informazioni FIRMWARE.BIN scaricato: ");
     Serial.print(bin.size());
     Serial.print(" bytes\n");
     if (bin.size() == 0)
