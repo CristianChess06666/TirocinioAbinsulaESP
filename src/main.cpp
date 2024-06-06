@@ -13,6 +13,7 @@
 #include <Adafruit_Sensor.h>
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include "FS.h"
 
 //               #----COSTANTI----#
 
@@ -44,7 +45,7 @@ boolean BOOT = true;
 #define FILE_UPDATEURL "/ota_url.txt"
 #define FILE_UPDATERESULT "/ota_result.txt"
 #define FILE_UPDATEBIN "/update.bin"
-#define CHUNK_SIZE 2048
+#define CHUNK_SIZE 65536
 
 // WIFI
 const char ssid[] = "abinsula-28";
@@ -96,6 +97,7 @@ boolean attributesChanged = false;
 
 //               #----OVERRIDE PRINT----#
 
+// Manda a TB il log + stampa sul serial
 void logln(const char *text)
 {
   if (!updating)
@@ -553,10 +555,11 @@ boolean download()
   // Formattazione dell'url
   log("[OTA | FW_URL] Richiedo il file ");
   logln(FILE_UPDATEBIN);
-  
+
   // ********************* INIT HTTP *********************
   HTTPClient http;
-  if (!http.begin(url)) {
+  if (!http.begin(url))
+  {
     Serial.println("[INFO] OTA] http.begin(url) error");
     return false;
   }
@@ -565,11 +568,13 @@ boolean download()
   size_t try_counter = 0;
   const size_t TRY_LIMIT = 20;
   int httpCode = -1;
-  do {
+  do
+  {
     httpCode = http.GET();
     Serial.print(".");
     vTaskDelay(pdMS_TO_TICKS(250));
-    if (try_counter++ == TRY_LIMIT) {
+    if (try_counter++ == TRY_LIMIT)
+    {
       Serial.println("[INFO] OTA] Connection timeout");
       return false;
     }
@@ -577,13 +582,15 @@ boolean download()
   Serial.println("[INFO] OTA] GET Success");
 
   // ********************* RECEIVE FILE STREAM *********************
-  WiFiClient* stream = http.getStreamPtr();
+  WiFiClient *stream = http.getStreamPtr();
   try_counter = 0;
-  do {
+  do
+  {
     stream = http.getStreamPtr();
     vTaskDelay(pdMS_TO_TICKS(250));
     Serial.print(".");
-    if (try_counter++ == TRY_LIMIT) {
+    if (try_counter++ == TRY_LIMIT)
+    {
       Serial.println("[INFO] OTA] Connection timeout");
       return false;
     }
@@ -591,42 +598,51 @@ boolean download()
   Serial.println("[INFO] OTA] File stream received");
 
   // ********************* CREATE NEW FILE *********************
-  File file = SPIFFS.open(FILE_UPDATEBIN, "w");
-  if (!file) {
+  File file = SPIFFS.open(FILE_UPDATEBIN, FILE_APPEND);
+  if (!file)
+  {
     Serial.println("[INFO] OTA] Error opening file");
     return false;
   }
   Serial.println("[INFO] OTA] Opened FILE_UPDATEBIN file");
 
   // ********************* DOWNLOAD PROCESS *********************
-  uint8_t* buffer_ = (uint8_t*)malloc(CHUNK_SIZE);
-  uint8_t* cur_buffer = buffer_;
+  uint8_t *buffer_ = (uint8_t *)malloc(CHUNK_SIZE);
+  uint8_t *cur_buffer = buffer_;
   const size_t TOTAL_SIZE = http.getSize();
   Serial.print("[INFO] OTA] TOTAL SIZE : ");
   Serial.println(TOTAL_SIZE);
   size_t downloadRemaining = TOTAL_SIZE;
+  // size_t downloadRemainingBefore = 0;
   Serial.println("[INFO] OTA] Download START");
 
   int i = 0;
   auto start_ = millis();
-  if (!http.connected()) {
+  if (!http.connected())
+  {
     Serial.println("[INFO] OTA] http.connected() false?");
   }
-  while (downloadRemaining > 0) {
-    i++;
-    Serial.print("[INFO] OTA] Downloading chunk ");
-    Serial.print(i);
-    Serial.print(" - Remaining ");
-    Serial.print(downloadRemaining);
-    Serial.print("\n");
+  while (downloadRemaining > 0 && http.connected())
+  {
+    // if (downloadRemaining != downloadRemainingBefore)
+    // {
+      i++;
+      Serial.print("[INFO] OTA] Downloading chunk ");
+      Serial.print(i);
+      Serial.print(" - Remaining ");
+      Serial.print(downloadRemaining);
+      Serial.print("\n");
+    // }
     auto data_size = stream->available();
-    if (data_size > 0) {
+    if (data_size > 0)
+    {
       auto available_buffer_size = CHUNK_SIZE - (cur_buffer - buffer_);
       auto read_count = stream->read(cur_buffer, ((data_size > available_buffer_size) ? available_buffer_size : data_size));
       cur_buffer += read_count;
       downloadRemaining -= read_count;
       // If one chunk of data has been accumulated, write to SPIFFS
-      if (cur_buffer - buffer_ == CHUNK_SIZE) {
+      if (cur_buffer - buffer_ == CHUNK_SIZE)
+      {
         file.write(buffer_, CHUNK_SIZE);
         cur_buffer = buffer_;
       }
@@ -643,14 +659,25 @@ boolean download()
 
   file.close();
   free(buffer_);
-  
+
   File bin = SPIFFS.open(FILE_UPDATEBIN, "r");
-  if (!bin) {
-    Serial.println("Non ho scaricato UN CAZZO nel file");
+  if (!bin)
+  {
+    Serial.println("[INFO] OTA] File non esistente?");
   }
-  Serial.println("[INFO] OTA] Informazioni FIRMWARE.BIN scaricato:");
-  Serial.println(bin.size());
-  
+  else
+  {
+    Serial.print("[INFO] OTA] Informazioni FIRMWARE.BIN scaricato: ");
+    Serial.print(bin.size());
+    Serial.print(" bytes\n");
+    if (bin.size() == 0)
+    {
+      log("[CRITICAL] OTA] FIRMWARE.BIN non è stato scaricato correttamente. Riavvio ESP...");
+      ESP.restart();
+    }
+    bin.close();
+  }
+
   return true;
 }
 
@@ -662,13 +689,17 @@ void callback(char *topic, byte *payload, unsigned int length)
   // Se questo ritorna come false è un OTA
   if (!checkJson(payload, length))
   {
-    if (download()){
+    if (download())
+    {
       logln("[INFO] OTA] Download completato; Riavvio...");
       delay(1000);
       ESP.restart();
-    }else{
-      logln("[CRITICAL] OTA] Download fallito; Procedo al normale funzionamento...");
+    }
+    else
+    {
+      logln("[CRITICAL] OTA] Download fallito; Riavvio...");
       delay(1000);
+      ESP.restart();
     }
   }
 }
@@ -704,6 +735,16 @@ void setupMainDirectory()
   {
     logln("[INFO] SPIFFS - setupMainDirectory] SPIFFS inizializzato correttamente");
   }
+
+  // Informazioni sullo stato SPIFFS
+  // logln("[INFO] SPIFFS - setupMainDirectory] Informazioni sul file system:");
+  // size_t totalBytes = LittleFS.totalBytes();
+  // size_t usedBytes = LittleFS.usedBytes();
+  // size_t remainingBytes = totalBytes - usedBytes;
+
+  // Serial.println(String(totalBytes) + " bytes totali");
+  // Serial.println(String(usedBytes) + " bytes usati");
+  // Serial.println(String(remainingBytes) + " bytes rimanenti");
 
   // Se c'è un file di risultato flash
   // lo apri..
@@ -804,7 +845,7 @@ void setupMainDirectory()
   serializeJsonPretty(jsonDocument, Serial);
   logln("");
   logln("[INFO] SPIFFS - setupMainDirectory] --------------------");
-  
+
   File root = SPIFFS.open("/", "r");
 
   File file = root.openNextFile();
