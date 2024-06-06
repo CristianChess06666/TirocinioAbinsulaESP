@@ -612,82 +612,55 @@ boolean download()
   Serial.println("[INFO] OTA] Ricevuto stream di dati");
 
   // ********************* DOWNLOAD PROCESS *********************
-  uint8_t *buffer_ = (uint8_t *)malloc(CHUNK_SIZE);
-  uint8_t *cur_buffer = buffer_;
-  const size_t TOTAL_SIZE = http.getSize();
-  Serial.print("[INFO] OTA] Buffer totale da scaricare pari a ");
-  Serial.print(TOTAL_SIZE);
-  Serial.println(" bytes");
-  
-  uint8_t *buffer = (uint8_t *)malloc(TOTAL_SIZE);
-  if (!buffer)
-  {
-    Serial.println("[INFO] OTA] Errore durante l'allocazione della memoria");
-    return false;
-  }
+  size_t remainingBytes = TOTAL_SIZE;
+  size_t chunkIndex = 0;
 
-  size_t downloadRemaining = TOTAL_SIZE;
-  size_t downloadRemainingBefore = downloadRemaining;
-  size_t offset = 0;
-  Serial.println("[DOWNLOAD START] OTA] OK");
+  while (remainingBytes > 0)
+  {
+    // Calcolo della dimensione del chunk attuale
+    size_t currentChunkSize = min(remainingBytes, CHUNK_SIZE);
 
-  int i = 0;
-  auto start_ = millis();
-  if (!http.connected())
-  {
-    Serial.println("[INFO] OTA] Condizione \"http.connected()\" risulta false?");
-    return false;
-  }
-  while (downloadRemaining > 0 && http.connected())
-  {
-    if (downloadRemaining != downloadRemainingBefore)
+    // Creazione del nome del file per il chunk attuale
+    String filename = "/part" + String(chunkIndex) + ".bin";
+
+    // Apertura del file per il chunk attuale
+    File file = SPIFFS.open(filename, FILE_WRITE);
+    if (!file)
     {
-      i++;
-      Serial.print("[DOWNLOAD] OTA] In download Chunk ");
-      Serial.print(i);
-      Serial.print(" - ");
-      Serial.print(downloadRemaining);
-      Serial.print(" bytes rimanenti\n");
-      downloadRemainingBefore = downloadRemaining;
+      Serial.println("[INFO] OTA] Errore durante l'apertura del file per la scrittura");
+      return false;
     }
-    auto data_size = stream->available();
-    if (data_size > 0)
+
+    // Lettura e scrittura del chunk attuale
+    uint8_t buffer[CHUNK_SIZE];
+    size_t bytesRead = 0;
+    while (bytesRead < currentChunkSize)
     {
-      auto read_count = stream->readBytes(buffer + offset, (data_size > downloadRemaining) ? downloadRemaining : data_size);
-      downloadRemaining -= read_count;
-      offset += read_count;
+      size_t bytesToRead = min(currentChunkSize - bytesRead, sizeof(buffer));
+      size_t bytesReadThisTime = stream->readBytes(buffer, bytesToRead);
+      if (bytesReadThisTime == 0)
+      {
+        Serial.println("[INFO] OTA] Connessione chiusa prima che tutti i dati fossero letti");
+        file.close();
+        return false;
+      }
+      file.write(buffer, bytesReadThisTime);
+      bytesRead += bytesReadThisTime;
     }
-    vTaskDelay(1);
+
+    // Chiusura del file per il chunk attuale
+    file.close();
+
+    // Aggiornamento dei dati rimanenti e dell'indice del chunk
+    remainingBytes -= currentChunkSize;
+    chunkIndex++;
+
+    Serial.print("[INFO] OTA] Scaricato e salvato il chunk ");
+    Serial.print(chunkIndex);
+    Serial.print(" - ");
+    Serial.print(remainingBytes);
+    Serial.println(" bytes rimanenti");
   }
-  auto end_ = millis();
-
-  
-  // ********************* CREATE NEW FILE *********************
-  File file = SPIFFS.open(FILE_UPDATEBIN, FILE_WRITE);
-  if (!file)
-  {
-    Serial.println("[INFO] OTA] Errore durante l'apertura del file per la scrittura");
-    free(buffer);
-    return false;
-  }
-
-  file.write(buffer, TOTAL_SIZE);
-  file.close();
-  free(buffer);
-
-  // Scrivi eventuali dati rimanenti nel buffer
-  // if (cur_buffer > buffer_)
-  // {
-  //   file.write(buffer_, cur_buffer - buffer_);
-  // }
-
-  Serial.println("[DOWNLOAD END] OTA] OK");
-
-  size_t time_ = (end_ - start_) / 1000;
-  String speed_ = String(TOTAL_SIZE / time_);
-  Serial.println("[INFO] OTA] Velocità: " + speed_ + " bytes/sec");
-
-  free(buffer_);
 
   File bin = SPIFFS.open(FILE_UPDATEBIN, "r");
   if (!bin)
@@ -696,7 +669,7 @@ boolean download()
   }
   else
   {
-    Serial.print("[INFO] OTA] Informazioni FIRMWARE.BIN scaricato: ");
+    Serial.print("[INFO] OTA] Informazioni FIRMWARE.BIN compilato: ");
     Serial.print(bin.size());
     Serial.print(" bytes\n");
     if (bin.size() == 0)
