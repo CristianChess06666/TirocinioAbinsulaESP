@@ -703,7 +703,8 @@ boolean download()
     }
     bin.close();
   }
-
+  
+  vTaskDelay(pdMS_TO_TICKS(2000)); 
   return true;
 }
 
