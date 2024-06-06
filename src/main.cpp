@@ -595,6 +595,12 @@ boolean download()
   } while (httpCode != HTTP_CODE_OK);
   Serial.println("[INFO] OTA] GET Success");
 
+  // ********************* DETERMINE FILE SIZE *********************
+  const size_t TOTAL_SIZE = http.getSize();
+  Serial.print("[INFO] OTA] Dimensione totale del file da scaricare: ");
+  Serial.print(TOTAL_SIZE);
+  Serial.println(" bytes");
+
   // ********************* RECEIVE FILE STREAM *********************
   WiFiClient *stream = http.getStreamPtr();
   try_counter = 0;
@@ -618,7 +624,7 @@ boolean download()
   while (remainingBytes > 0)
   {
     // Calcolo della dimensione del chunk attuale
-    size_t currentChunkSize = min(remainingBytes, CHUNK_SIZE);
+    size_t currentChunkSize = remainingBytes - CHUNK_SIZE;
 
     // Creazione del nome del file per il chunk attuale
     String filename = "/part" + String(chunkIndex) + ".bin";
