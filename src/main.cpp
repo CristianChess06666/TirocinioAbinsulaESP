@@ -451,17 +451,17 @@ boolean checkJson(byte *payload, unsigned int length)
     // Crea (o apre) il file che usiamo per
     // capire se il chip è stato flashato correttamente
     // Se l'Update fallisce viene messo a true
-    File ota2 = SPIFFS.open(FILE_UPDATERESULT, "w");
-    if (ota2)
-    {
-      ota2.print("false");
-      ota2.close();
-      Serial.println("[INFO] OTA | FW RESULT] Scrittura completata");
-    }
-    else
-    {
-      Serial.println("[CRITICAL] OTA | FW RESULT] Scrittura fallita!");
-    }
+    // File ota2 = SPIFFS.open(FILE_UPDATERESULT, "w");
+    // if (ota2)
+    // {
+    //   ota2.print("false");
+    //   ota2.close();
+    //   Serial.println("[INFO] OTA | FW RESULT] Scrittura completata");
+    // }
+    // else
+    // {
+    //   Serial.println("[CRITICAL] OTA | FW RESULT] Scrittura fallita!");
+    // }
 
     return false;
   }
