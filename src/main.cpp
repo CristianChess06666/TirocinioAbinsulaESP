@@ -612,7 +612,7 @@ boolean download()
   Serial.println("[INFO] OTA] Ricevuto stream di dati");
 
   // ********************* CREATE NEW FILE *********************
-  File file = SPIFFS.open(FILE_UPDATEBIN, FILE_APPEND);
+  File file = SPIFFS.open(FILE_UPDATEBIN, "ab");
   if (!file)
   {
     Serial.println("[INFO] OTA] Errore durante l'apertura del nuovo firmware");
@@ -659,11 +659,7 @@ boolean download()
       downloadRemaining -= read_count;
       if (cur_buffer - buffer_ == CHUNK_SIZE)
       {
-        //COMMIT
-        for (int j = 0; j < read_count; j++)
-        {
-          file.print((char)buffer[j]);
-        }
+        file.write(buffer_, CHUNK_SIZE);
         cur_buffer = buffer_;
       }
     }
