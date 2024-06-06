@@ -371,10 +371,10 @@ boolean checkJson(byte *payload, unsigned int length)
   memcpy(jsonString, payload, length);
   jsonString[length] = '\0';
 
-   Serial.println("*********************");
-   Serial.write(payload, length);
-   Serial.println("");
-   Serial.println("*********************");
+  Serial.println("*********************");
+  Serial.write(payload, length);
+  Serial.println("");
+  Serial.println("*********************");
 
   DynamicJsonDocument jsonDocument(2048);
   DeserializationError error = deserializeJson(jsonDocument, jsonString);
@@ -418,11 +418,11 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       serializeJsonPretty(completeConfig, configFileOTA);
       configFileOTA.close();
-      logln("[INFO] OTA | FW Version] Scrittura completata");
+      Serial.println("[INFO] OTA | FW Version] Scrittura completata");
     }
     else
     {
-      logln("[CRITICAL] OTA | FW Version] Scrittura fallita!");
+      Serial.println("[CRITICAL] OTA | FW Version] Scrittura fallita!");
     }
   }
 
@@ -440,11 +440,11 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota1.print(urlUpdateBin);
       ota1.close();
-      logln("[INFO] OTA | FW URL] Scrittura completata");
+      Serial.println("[INFO] OTA | FW URL] Scrittura completata");
     }
     else
     {
-      logln("[CRITICAL] OTA | FW URL] Scrittura fallita!");
+      Serial.println("[CRITICAL] OTA | FW URL] Scrittura fallita!");
     }
 
     // Crea (o apre) il file che usiamo per
@@ -455,16 +455,19 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota2.print("false");
       ota2.close();
-      logln("[INFO] OTA | FW RESULT] Scrittura completata");
+      Serial.println("[INFO] OTA | FW RESULT] Scrittura completata");
     }
     else
     {
-      logln("[CRITICAL] OTA | FW RESULT] Scrittura fallita!");
+      Serial.println("[CRITICAL] OTA | FW RESULT] Scrittura fallita!");
     }
 
     return false;
   }
-  else
+
+  // Un secondo modo da ThingsBoard per ricevere il link
+  // (assegnando all'entità un firmware)
+  if (jsonDocument.containsKey("targetFwUrl"))
   {
     strcpy(urlUpdateBin, jsonDocument["targetFwUrl"]);
 
@@ -475,35 +478,13 @@ boolean checkJson(byte *payload, unsigned int length)
     {
       ota1.print(urlUpdateBin);
       ota1.close();
-      logln("[INFO] OTA | DIRECT FW] Scrittura completata");
+      Serial.println("[INFO] OTA | FW URL] Scrittura completata");
     }
     else
     {
-      logln("[CRITICAL] OTA | DIRECT URL] Scrittura fallita!");
+      Serial.println("[CRITICAL] OTA | FW URL] Scrittura fallita!");
     }
 
-    // Crea (o apre) il file che usiamo per
-    // capire se il chip è stato flashato correttamente
-    // Se l'Update fallisce viene messo a true
-    File ota2 = SPIFFS.open(FILE_UPDATERESULT, "w");
-    if (ota2)
-    {
-      ota2.print("false");
-      ota2.close();
-      logln("[INFO] OTA | DIRECT FW RESULT] Scrittura completata");
-    }
-    else
-    {
-      logln("[CRITICAL] OTA | DIRECT FW RESULT] Scrittura fallita!");
-    }
-
-    return false;
-  }
-  // Un secondo modo da ThingsBoard per ricevere il link
-  // (assegnando all'entità un firmware)
-  if (jsonDocument.containsKey("targetFwUrl"))
-  {
-    strcpy(urlUpdateBin, jsonDocument["targetFwUrl"]);
     return false;
   }
 
@@ -551,7 +532,7 @@ boolean checkJson(byte *payload, unsigned int length)
   logln("[INFO] checkJson] Attributi cambiati");
   return true;
 }
-//               #----DOWNLOAD NUOVO FIRMWARE OTA----#
+
 void sendStringToServer(String sendMsg, AsyncClient *tcpClient)
 {
   //Manda richiesta GET al server http
@@ -676,6 +657,7 @@ void download()
   logln(FILE_UPDATEBIN);
 
   // Prepari il GET da inoltrare al server
+
   String resp = String("GET ") +
                 extension +
                 String(" HTTP/1.1\r\n") +
@@ -684,8 +666,11 @@ void download()
                 String("\r\n") +
                 String("Icy-MetaData:1\r\n") +
                 String("Connection: close\r\n\r\n");
+                log("[OTA | FW_URL] Richiedo il fisdfsdgsfgdgsdgdgegle ");
   // Manda il GET
   sendStringToServer(resp, tcpClient);
+                  log("[OTA | FW_URL] Richiedo il fisdfsdgsfgdgsdgdgegle ");
+
 }
 
 void callback(char *topic, byte *payload, unsigned int length)
@@ -696,8 +681,11 @@ void callback(char *topic, byte *payload, unsigned int length)
   // Se questo ritorna come false è un OTA
   if (!checkJson(payload, length))
   {
+                    log("[OTA | FW_URL] Richiedo il fisdfsdgsfgdgsdgdgegle ");
+
     download();
-    
+                    log("[OTA | FW_URL] Richiedo il fisdfsdgsfgdgsdgdgegle ");
+
   }
 }
 
