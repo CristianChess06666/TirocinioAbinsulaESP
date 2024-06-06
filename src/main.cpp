@@ -683,7 +683,7 @@ boolean download()
   String speed_ = String(TOTAL_SIZE / time_);
   Serial.println("[INFO] OTA] Velocità: " + speed_ + " bytes/sec");
 
-  file.close();
+  fclose(file);
   free(buffer_);
 
   File bin = SPIFFS.open(FILE_UPDATEBIN, "r");
