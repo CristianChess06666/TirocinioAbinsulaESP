@@ -90,6 +90,7 @@ HTTPClient http;
 File updatebinfile;
 boolean updating = false;
 char FWVersion[] = "1.0";
+int downloadTry = 0;
 
 // VAR
 unsigned long previousMillis = 0;
@@ -551,6 +552,19 @@ boolean download()
       updateurl.close();
     }
   }
+  else
+  {
+    Serial.println("[WARNING] OTA] FILE_UPDATEURL non esiste... uso la variabile globale");
+    if (urlUpdateBin == "")
+    {
+      url = urlUpdateBin;
+    }
+    else
+    {
+      Serial.println("[CRITICAL] OTA] Variabile globale vuota. Impossibile procedere!");
+      return false;
+    }
+  }
 
   // Formattazione dell'url
   log("[OTA | FW_URL] Richiedo il file ");
@@ -615,13 +629,14 @@ boolean download()
   Serial.println(" bytes");
   size_t downloadRemaining = TOTAL_SIZE;
   size_t downloadRemainingBefore = downloadRemaining;
-  Serial.println("[INFO] OTA] Download START");
+  Serial.println("[DOWNLOAD START] OTA] OK");
 
   int i = 0;
   auto start_ = millis();
   if (!http.connected())
   {
     Serial.println("[INFO] OTA] Condizione \"http.connected()\" risulta false?");
+    return false;
   }
   while (downloadRemaining > 0 && http.connected())
   {
@@ -658,7 +673,7 @@ boolean download()
   //   file.write(buffer_, cur_buffer - buffer_);
   // }
 
-  Serial.println("[INFO] OTA] Download END");
+  Serial.println("[DOWNLOAD END] OTA] OK");
 
   size_t time_ = (end_ - start_) / 1000;
   String speed_ = String(TOTAL_SIZE / time_);
@@ -679,8 +694,8 @@ boolean download()
     Serial.print(" bytes\n");
     if (bin.size() == 0)
     {
-      log("[CRITICAL] OTA] FIRMWARE.BIN non è stato scaricato correttamente. Riavvio ESP...");
-      ESP.restart();
+      log("[CRITICAL] OTA] FIRMWARE.BIN non è stato scaricato correttamente.");
+      return false;
     }
     bin.close();
   }
@@ -696,6 +711,7 @@ void callback(char *topic, byte *payload, unsigned int length)
   // Se questo ritorna come false è un OTA
   if (!checkJson(payload, length))
   {
+  ritentadownload:
     if (download())
     {
       logln("[INFO] OTA] Download completato; Riavvio...");
@@ -704,9 +720,19 @@ void callback(char *topic, byte *payload, unsigned int length)
     }
     else
     {
-      logln("[CRITICAL] OTA] Download fallito; Riavvio...");
-      delay(1000);
-      ESP.restart();
+      if (downloadTry < 3)
+      {
+        logln("[CRITICAL] OTA] Download fallito; Riprovo...");
+        delay(1000);
+        downloadTry++;
+        goto ritentadownload;
+      }
+      else
+      {
+        logln("[CRITICAL] OTA] Download fallito; Riavvio...");
+        delay(1000);
+        ESP.restart();
+      }
     }
   }
 }
