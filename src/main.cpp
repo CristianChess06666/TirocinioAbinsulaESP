@@ -612,10 +612,17 @@ boolean download()
   Serial.println("[INFO] OTA] Ricevuto stream di dati");
 
   // ********************* CREATE NEW FILE *********************
-  String fullpath = String("/") + file_name;
+  String fullpath = String("/") + FILE_UPDATEBIN;
   FILE *file = fopen(fullpath.c_str(), "ab");
   if (file == NULL)
   {
+    file = fopen(fullpath.c_str(), "wb");
+    if (file == NULL) {
+        Serial.println("[INFO] OTA] Errore durante la creazione del file");
+    } else {
+        Serial.println("[INFO] OTA] File creato con successo");
+        file = fopen(fullpath.c_str(), "ab");
+    }
     Serial.println("[INFO] OTA] Errore durante l'apertura del nuovo firmware");
     return false;
   }
@@ -703,7 +710,7 @@ boolean download()
     }
     bin.close();
   }
-  
+
   vTaskDelay(pdMS_TO_TICKS(2000)); 
   return true;
 }
