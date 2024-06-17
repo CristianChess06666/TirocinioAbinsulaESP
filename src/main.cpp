@@ -613,19 +613,14 @@ boolean download()
 
   // ********************* CREATE NEW FILE *********************
   String fullpath = String("/") + FILE_UPDATEBIN;
-  FILE *file = fopen(fullpath.c_str(), "ab");
-  if (file == NULL)
+  File prefile = SPIFFS.open(FILE_UPDATEBIN, "r");
+  if (prefile == NULL)
   {
-    file = fopen(fullpath.c_str(), "wb");
-    if (file == NULL) {
-        Serial.println("[INFO] OTA] Errore durante la creazione del file");
-    } else {
-        Serial.println("[INFO] OTA] File creato con successo");
-        file = fopen(fullpath.c_str(), "ab");
-    }
     Serial.println("[INFO] OTA] Errore durante l'apertura del nuovo firmware");
     return false;
   }
+  prefile.close();
+  FILE *file = fopen(fullpath.c_str(), "ab");
   Serial.println("[INFO] OTA] Aperto il file FILE_UPDATEBIN...");
 
   // ********************* DOWNLOAD PROCESS *********************
